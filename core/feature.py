@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 
-
+from core.config import *
 from tqdm import tqdm
 
 
@@ -14,7 +14,7 @@ from functools import lru_cache
 from glob import glob
 import json
 
-# from core.feature import *
+
 # #from core.submit import *
 # from core.check import *
 # from core.predict import *
@@ -38,13 +38,16 @@ import json
 
 # Variable
 
-input_folder = './input/data_set_phase1'
 
 from  pandas import Series
 
 
-@timed()
-def get_model_sequence():
+@file_cache()
+def get_plan_model_sequence():
+    """
+    get the display model sequence
+    :return:
+    """
     def get_model(plans):
         plans = json.loads(plans)
         res = {}
@@ -56,7 +59,7 @@ def get_model_sequence():
     res_list = []
     for plan_file in ['train_plans.csv', 'test_plans.csv']:
         original_plan = get_original(plan_file)
-        original_plan = original_plan.set_index('sid')
+        original_plan = original_plan.set_index(['sid', 'plan_time'])
 
 
         model_seq = original_plan.plans.apply(lambda item: get_model(item))
@@ -65,23 +68,25 @@ def get_model_sequence():
 
         model_seq = model_seq.fillna(0)
 
-        res_list.append(model_seq.astype(int).reset_index())
+        res_list.append(model_seq.astype(int) )
 
     return pd.concat(res_list)
 
-
-
-# @timed()
 @file_cache()
-def get_mini_plan(plan_file, model):
+def get_plan_mini(plan_file, model):
+    """
+    split the jasn to 11 model group
+    :param plan_file:
+    :param model:
+    :return:
+    """
     original_plan = get_original(plan_file)
-
     def get_model(plans, model):
         plans = json.loads(plans)
         if plans:
             for sn, plan in enumerate(plans):
                 if plan['transport_mode'] == model:
-                    plan['order']=sn
+                    #plan['order'] = sn
                     if plan['price'] is None or len(str(plan['price'])) == 0:
                         plan['price'] = 0
                     return Series(plan).astype(int)
@@ -90,26 +95,54 @@ def get_mini_plan(plan_file, model):
     # model=1
     sigle_model = original_plan.plans.apply(lambda item: get_model(item, model))
 
-    sigle_model['price'] = sigle_model['price'].fillna(0)#.astype(float)
+    sigle_model['price'] = sigle_model['price'].fillna(0)  # .astype(float)
 
     sigle_model = sigle_model.fillna(0).astype(int)
 
     if 'distance' not in sigle_model.columns:
         logger.warning(f'No plan is found for model:{model}')
         return pd.DataFrame()
-    col_list = ['order', 'distance', 'eta', 'price', 'transport_mode']
+    col_list = plan_items
 
     mini_plan = original_plan.loc[:, ['sid', 'plan_time']]
-    # mini_plan = train_plan[['sid','plan_time']]
-    mini_plan[[f'{item}_{model}' for item in col_list]] = sigle_model[col_list]
 
+    mini_plan[col_list] = sigle_model[col_list]
 
+    mini_plan = mini_plan.set_index(['sid', 'plan_time'])
+    mini_plan.columns = [[model] * len(mini_plan.columns), mini_plan.columns]
     return mini_plan
 
 
 @lru_cache()
 def get_original(file):
-    return pd.read_csv(f'{input_folder}/{file}')
+    return pd.read_csv(f'{input_folder}/{file}', dtype=type_dict)
+
+
+@timed()
+@file_cache()
+def get_plan_percentage():
+    """
+    Convert plan from amount/qty to percentage
+    :param plan:
+    :return:
+    """
+    plan = get_plan_original()
+    res_list = []
+    for item in plan_items:
+        col_list = [col for col in plan.columns if col[1] == item]
+        plan_percent = plan.loc[:, col_list].copy()
+        total = plan_percent.max(axis=1)
+        for col in plan_percent:
+            plan_percent[(col[0], f'{col[1]}_p')] = round(plan_percent[col] / total, 4)
+            del plan_percent[col]
+
+        res_list.append(plan_percent)
+    res = pd.concat(res_list, axis=1)
+
+    # res.columns.set_levels([ f'{item[1]}_p' for item in res.columns ],level=1,inplace=True)
+    # res.columns = [ (item[0], f'{item[1]}_p') for item in res.columns]
+    res = res.sort_index(axis=1, level=1)
+    return res
 
 @timed()
 def get_plans():
@@ -117,22 +150,33 @@ def get_plans():
     3, 5, 6 price is 0
     :return:
     """
+    plan = get_plan_original()
+    #res.plan_time = pd.to_datetime(res.plan_time)
+
+    plan_pg = get_plan_percentage()
+    plan[plan_pg.columns] = plan_pg[plan_pg.columns]
+
+    seq = get_plan_model_sequence()
+    plan[seq.columns] = seq[seq.columns]
+    #plan = pd.merge(plan,seq, how='left', on='sid')
+
+
+    return plan.reset_index()
+
+@timed()
+@file_cache()
+def get_plan_original():
     plan_list = []
     for plan_file in ['train_plans.csv', 'test_plans.csv']:
-        base = get_mini_plan(plan_file, 1)
+        base = get_plan_mini(plan_file, 1)
         for i in tqdm(range(2, 12)):
-            tmp= get_mini_plan(plan_file, i)
-            columns = tmp.columns[2:]
-            #print(columns)
+            tmp = get_plan_mini(plan_file, i)
+            columns = tmp.columns#[2:]
+            # print(columns)
             base[columns] = tmp.loc[:, columns]
         plan_list.append(base)
-    res = pd.concat(plan_list)
-    res.plan_time = pd.to_datetime(res.plan_time)
-
-
-    seq = get_model_sequence()
-    res = pd.merge(res,seq, how='left', on='sid')
-    return res
+    plan = pd.concat(plan_list)
+    return plan
 
 
 @lru_cache()
@@ -183,11 +227,28 @@ def get_feature():
     plans = get_plans()
     click = get_click()
 
+    del plans['plan_time']
+
+
 
     query = pd.merge(query, plans, how='left', on='sid')
     query = pd.merge(query, click, how='left', on='sid')
 
-    return query
+    query.loc[(query.label=='train') & pd.isna(query.click_mode), 'click_mode'] = 0
+
+
+    remove_list = ['o','d', 'label', 'req_time','click_time']
+    query = query.drop(remove_list,axis=1,errors='ignore')
+
+    query.click_mode = query.click_mode.fillna(-1)
+    query.click_mode = query.click_mode.astype(int)
+    query.pid        = query.pid.astype(int)
+
+    query['o_d_hash_6'] = query['o_d_hash_6'].astype('category').cat.codes
+    query['d_hash_6']   = query['d_hash_6'].astype('category').cat.codes
+    query['o_hash_6']   = query['o_hash_6'].astype('category').cat.codes
+
+    return query#.astype(type_dict)
 
 
 
