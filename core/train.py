@@ -50,7 +50,7 @@ def train(X_data, y_data, X_test):
 
         val_score = f1_score(y_data[val_idx], oof[val_idx].argmax(axis=1), average='weighted')
 
-        logger.info(f'fold n{fold_}, score:{val_score},best_iter:{clf.best_iteration}, val shape:{X_data.iloc[val_idx].shape}')
+        logger.info(f'fold n{fold_}, score:{val_score:6.4f},best_iter:{clf.best_iteration}, val shape:{X_data.iloc[val_idx].shape}')
 
         fold_importance_df = pd.DataFrame()
         fold_importance_df["feature"] = X_data.columns
@@ -62,7 +62,7 @@ def train(X_data, y_data, X_test):
     predictions = predictions / folds.n_splits
     oof = oof.argmax(axis=1)
     score = f1_score(y_data.values, oof, average='weighted')
-    logger.info(f'The final local score:{score}')
+    logger.info(f'The final local score:{score:6.4f}')
     return predictions, score
 
 if __name__ == '__main__':
