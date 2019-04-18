@@ -184,13 +184,22 @@ def get_query():
     import geohash as geo
     train = get_original('train_queries.csv')
     train['label'] = 'train'
+
+    # day_ = pd.to_datetime(train.req_time).dt.date
+    # day_ = day_ - min(day_)
+    # day_ = day_.dt.days
+    # train['gp'] = pd.qcut(day_, 5).cat.codes.values
+    #
+
     test = get_original('test_queries.csv')
     test['label'] = 'test'
+    # test['gp'] = -1
 
     train_query = pd.concat([train, test])
     train_query.pid = train_query.pid.fillna(0)
     train_query.pid = train_query.pid.astype(int)
     train_query.req_time = pd.to_datetime(train_query.req_time)
+    #train_query['date'] = train_query.req_time.dt.date
     train_query['day'] = train_query.req_time.dt.day
     train_query['weekday'] = train_query.req_time.dt.weekday
     train_query['hour'] = train_query.req_time.dt.hour
@@ -242,7 +251,7 @@ def get_feature(group=None):
     query.loc[(query.label=='train') & pd.isna(query.click_mode), 'click_mode'] = 0
 
 
-    remove_list = ['o','d', 'label', 'req_time','click_time']
+    remove_list = ['o','d', 'label', 'req_time','click_time', 'day']
     query = query.drop(remove_list,axis=1,errors='ignore')
 
     query.click_mode = query.click_mode.fillna(-1)
