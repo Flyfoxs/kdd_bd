@@ -221,19 +221,24 @@ def get_click():
     return get_original('train_clicks.csv')
 
 @timed()
-@lru_cache()
-def get_feature():
+@file_cache()
+def get_feature(group=None):
     query = get_query()
     plans = get_plans()
     click = get_click()
+
 
     del plans['plan_time']
 
 
 
     query = pd.merge(query, plans, how='left', on='sid')
-    query = pd.merge(query, click, how='left', on='sid')
 
+    if group is not None and 'profile' in group:
+        profile = get_original('profiles.csv').astype(int)
+        query = pd.merge(query, profile, how='left', on='pid')
+
+    query = pd.merge(query, click, how='left', on='sid')
     query.loc[(query.label=='train') & pd.isna(query.click_mode), 'click_mode'] = 0
 
 
@@ -247,11 +252,13 @@ def get_feature():
     query['o_d_hash_6'] = query['o_d_hash_6'].astype('category').cat.codes
     query['d_hash_6']   = query['d_hash_6'].astype('category').cat.codes
     query['o_hash_6']   = query['o_hash_6'].astype('category').cat.codes
-
-    return query#.astype(type_dict)
+    query = query.set_index('sid')
+    return query.fillna(0)
 
 
 
 if __name__ == '__main__':
-    get_feature()
+    get_feature(('profile'))
+
+    get_feature(None)
 
