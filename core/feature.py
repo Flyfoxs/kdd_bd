@@ -109,7 +109,8 @@ def get_plan_mini(plan_file, model):
     mini_plan[col_list] = sigle_model[col_list]
 
     mini_plan = mini_plan.set_index(['sid', 'plan_time'])
-    mini_plan.columns = [[model] * len(mini_plan.columns), mini_plan.columns]
+    del mini_plan['transport_mode']
+    mini_plan.columns = [[str(model)] * len(mini_plan.columns), mini_plan.columns]
     return mini_plan
 
 
@@ -133,7 +134,7 @@ def get_plan_percentage():
         plan_percent = plan.loc[:, col_list].copy()
         total = plan_percent.max(axis=1)
         for col in plan_percent:
-            plan_percent[(col[0], f'{col[1]}_p')] = round(plan_percent[col] / total, 4)
+            plan_percent[(str(col[0]), f'{col[1]}_p')] = round(plan_percent[col] / total, 4)
             del plan_percent[col]
 
         res_list.append(plan_percent)
@@ -199,7 +200,7 @@ def get_query():
     train_query.pid = train_query.pid.fillna(0)
     train_query.pid = train_query.pid.astype(int)
     train_query.req_time = pd.to_datetime(train_query.req_time)
-    #train_query['date'] = train_query.req_time.dt.date
+    train_query['date'] = train_query.req_time.dt.date
     train_query['day'] = train_query.req_time.dt.day
     train_query['weekday'] = train_query.req_time.dt.weekday
     train_query['hour'] = train_query.req_time.dt.hour

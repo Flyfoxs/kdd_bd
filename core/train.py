@@ -22,7 +22,7 @@ def gen_sub(file):
     res = pd.read_csv(file)
     res.sid = res.sid.astype(object)
     res = res.set_index('sid')
-    res['recommend_mode'] = res.iloc[:, 1:].idxmax(axis=1)
+    res['recommend_mode'] = res.idxmax(axis=1)
     import csv
     print(csv.QUOTE_NONE)
     sub_file  = file.replace('res', '/sub/sub')
@@ -31,8 +31,10 @@ def gen_sub(file):
 
 
 def get_groups():
-    train = get_original('train_queries.csv')
-    day_ = pd.to_datetime(train.req_time).dt.date
+    feature = get_feature(None)
+    feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+    feature = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)].reset_index(drop=True)
+    day_ = feature.date
     day_ = day_ - min(day_)
     day_ = day_.dt.days
     end = max(day_)
@@ -115,7 +117,7 @@ def train(X_data, y_data, X_test, cv=False):
         score = f1_score(y_data.values, oof.argmax(axis=1), average='weighted')
 
     logger.info(f'cv:{cv}, the final local score:{score:6.4f}, predictions:{predictions.shape}')
-    predictions = pd.DataFrame(predictions, index=X_test.index, columns=range(12))
+    predictions = pd.DataFrame(predictions, index=X_test.index, columns=[str(i) for i in range(12)])
     predictions.index.name = 'sid'
     return predictions, score, feature_importance_df
 
@@ -136,22 +138,39 @@ def plot_import(feature_importance):
 if __name__ == '__main__':
 
     if __name__ == '__main__':
-        for group in [('profile'), None, ]:
-            feature = get_feature(group)  # .fillna(0)
-            train_data = feature.loc[feature.click_mode >= 0]
-            X_data, y_data = train_data.iloc[:, :-1], train_data.iloc[:, -1]
-            X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
+        for sn, drop_list in enumerate([
+            ['date', 'weekday'],
+            ['date',],
+            #['date','weekend'] ,
 
-            for cv in [False]:
-                res, score, feature_importance = train(X_data, y_data, X_test, cv=cv)
-                file = f'./output/res_7days_{feature.shape[1]}_{cv}_{score:6.4f}.csv'
-                res.to_csv(file)
-                gen_sub(file)
 
-                feature_importance.to_hdf('./output/fi_{feature.shape[1]}_{cv}_{score:6.4f}.h5',key='key')
+        ]):
+            for group in [('profile') ]:
+                feature = get_feature(group)  # .fillna(0)
+                feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+                feature = feature.drop(drop_list,axis=1,errors='ignore')
 
+                X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
+
+                train_data = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ >0)]
+                X_data, y_data = train_data.iloc[:, :-1], train_data.iloc[:, -1]
+
+
+                for cv in [False]:
+                    res, score, feature_importance = train(X_data, y_data, X_test, cv=cv)
+
+                    #Fix the data if no plan at all
+                    logger.info('Manually adjust these records:')
+                    logger.info(res.loc[ X_test.o_seq_0_==0].idxmax(axis=1).value_counts())
+                    res.loc[ X_test.o_seq_0_==0, '0']= 1
+
+                    file = f'./output/res_adj_drop_sn_{sn}_{feature.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                    res.to_csv(file)
+                    gen_sub(file)
+
+                    feature_importance.to_hdf(f'./output/fi_drop_sn_{sn},_{feature.shape[1]}_{cv}_{score:6.4f}.h5',key='key')
 
 
 """"
-nohup python -u  core/train.py > 7days2.log 2>&1 &
+nohup python -u  core/train.py > train.log 2>&1 &
 """
