@@ -1,6 +1,7 @@
 from core.feature import *
 
 import lightgbm as lgb
+import xgboost as xgb
 import pandas as pd
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
@@ -11,8 +12,10 @@ from sklearn.metrics import f1_score
 def lgb_f1_score(y_hat, data):
     y_true = data.get_label()
     num_sample = len(y_true)
+    #print(y_hat.shape, y_hat[:10])
     y_hat =  y_hat.reshape(-1, num_sample).T.argmax(axis=1)
     #y_hat = np.round(y_hat) # scikits f1 doesn't like probabilities
+    #print(y_true.shape, y_hat.shape, y_true[:10], y_hat[:10])
     score = f1_score(y_true, y_hat, average='weighted')
     return 'f1', round(score, 4) , True
 
@@ -25,8 +28,8 @@ def gen_sub(file):
     res['recommend_mode'] = res.idxmax(axis=1)
 
     # Fix the data if no plan at all
-    feature = get_feature(('profile'))  # .fillna(0)
-    feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+    feature = get_feature()  # .fillna(0)
+    #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
     adjust_sid = feature.loc[(feature.click_mode == -1) & (feature.o_seq_0_ == 0)]
     len_prepare_adjust = len(adjust_sid)
     real_need_to_adjust = len(res.loc[adjust_sid.index])
@@ -43,20 +46,19 @@ def gen_sub(file):
     logger.info(f'Sub file save to {sub_file}')
 
 
-def get_groups():
-    feature = get_feature(None)
-    feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+def get_groups(cut_point = val_cut_point):
+    feature = get_feature()
+    #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
     feature = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)].reset_index(drop=True)
     day_ = feature.date
     day_ = day_ - min(day_)
     day_ = day_.dt.days
-    end = max(day_)
-    cut_point = [end-7, end-14]
-    return [(day_.loc[day_<=point].index.values ,day_.loc[day_>point].index.values) for point in cut_point]
+    #end = max(day_)
+    return [(day_.loc[day_<=cut_point].index.values ,day_.loc[day_>cut_point].index.values) ]
 
 
 @timed()
-def train(X_data, y_data, X_test, cv=False, args={}):
+def train_lgb(X_data, y_data, X_test, cv=False, args={}):
 
     num_class = 12
 
@@ -82,13 +84,15 @@ def train(X_data, y_data, X_test, cv=False, args={}):
             'lambda_l2': 0.2,
             'max_depth': 4,
             'objective': 'multiclass',
-            'metric': 'None',
+            #'metric': 'None',
             'num_class': num_class,
         # lightgbm.basic.LightGBMError: b'Number of classes should be specified and greater than 1 for multiclass training'
             # 'device':'gpu',
             #'gpu_platform_id': 1, 'gpu_device_id': 0
         }
         params = dict(params, **args)
+
+        logger.info(params)
 
         num_round = 30000
         verbose_eval = 50
@@ -161,16 +165,21 @@ def get_search_space():
 
 
 @timed()
-def train_ex(args):
+def train_ex(args={}):
 
     for sn, drop_list in enumerate([
         #['date', 'day'],
         ['date',],
     ]):
 
-        for group in [('profile') ]:
-            feature = get_feature(group)  # .fillna(0)
+        for ratio in range(1):
+            feature = get_feature()  # .fillna(0)
             feature = feature.drop(drop_list,axis=1,errors='ignore')
+
+            for col, type_ in feature.dtypes.sort_values().iteritems():
+                if type_ not in ['int64', 'int16', 'int32', 'float64']:
+                    logger.error(col, type_)
+
             feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
 
             train_data = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ >0)]
@@ -179,29 +188,22 @@ def train_ex(args):
             X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
 
             for cv in [False]:
-                res, score, feature_importance = train(X_data, y_data, X_test, cv=cv, args=args)
+                res, score, feature_importance = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
 
-                file = f'./output/res_v2_drop_sn_{sn}_{feature.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                file = f'./output/res_ratio_{ratio:3.1f}_{sn}_{feature.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.csv'
                 res.to_csv(file)
                 gen_sub(file)
 
                 feature_importance.to_hdf(f'./output/fi_drop_sn_{sn},_{feature.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
-    return {
-            'loss': -score,
-            'status': STATUS_OK,
-            # -- store other results like this
-            #'eval_time': time.time(),
-            #'other_stuff': {'type': None, 'value': [0, 1, 2]},
-            # -- attachments are handled differently
-            'attachments': {"message": f'{args} ', }
-            }
 
+    res = { 'loss': -score, 'status': STATUS_OK, 'attachments': {"message": f'{args} ', } }
+    logger.info(res)
+    return res
 
-if __name__ == '__main__':
-
+def search():
     trials = Trials()
     space = get_search_space()
-    best = fmin(train_ex, space, algo=tpe.suggest, max_evals=50, trials=trials)
+    best = fmin(train_ex, space, algo=tpe.suggest, max_evals=20, trials=trials)
 
     logger.debug(f"Best: {best}")
     att_message = [trials.trial_attachments(trial)['message'] for trial in trials.trials]
@@ -211,6 +213,15 @@ if __name__ == '__main__':
                                  ):
         logger.debug(f'score:{"%9.6f"%score}, para:{para}, misc:{misc}')
 
+
+
+if __name__ == '__main__':
+    #train_ex()
+    search()
+
+
 """"
-nohup python -u  core/train.py > search.log 2>&1 &
+nohup python -u  core/train.py > search_logloss.log 2>&1 &
+
+nohup python -u  core/train.py > sub.log 2>&1 &
 """

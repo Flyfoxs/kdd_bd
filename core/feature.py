@@ -73,7 +73,7 @@ def get_plan_model_sequence():
     return pd.concat(res_list)
 
 @file_cache()
-def get_plan_mini(plan_file, model):
+def get_plan_mini(plan_file='test_plans.csv', model=1):
     """
     split the jasn to 11 model group
     :param plan_file:
@@ -99,6 +99,8 @@ def get_plan_mini(plan_file, model):
 
     sigle_model = sigle_model.fillna(0).astype(int)
 
+    #del sigle_model['transport_mode']
+
     if 'distance' not in sigle_model.columns:
         logger.warning(f'No plan is found for model:{model}')
         return pd.DataFrame()
@@ -109,7 +111,7 @@ def get_plan_mini(plan_file, model):
     mini_plan[col_list] = sigle_model[col_list]
 
     mini_plan = mini_plan.set_index(['sid', 'plan_time'])
-    del mini_plan['transport_mode']
+
     mini_plan.columns = [[str(model)] * len(mini_plan.columns), mini_plan.columns]
     return mini_plan
 
@@ -117,6 +119,36 @@ def get_plan_mini(plan_file, model):
 @lru_cache()
 def get_original(file):
     return pd.read_csv(f'{input_folder}/{file}', dtype=type_dict)
+
+
+def get_click_percent(feature, val_cut_point):
+    col = sorted([item for item in feature.columns if item.endswith('transport_mode')])
+    df_col = col.copy()
+    df_col.extend(['click_mode', 'pid'])
+    # Click
+    logger.info(f'Only base on day from 0 to {val_cut_point} to cal click percentage')
+    click = feature.loc[feature.day <= val_cut_point, df_col].copy()
+    for sn, cur_col in enumerate(col):
+        print(cur_col)
+        click[cur_col] = click.apply(lambda item: 1 if item[cur_col] > 0 and item[cur_col] == item['click_mode'] else 0,
+                                     axis=1)
+
+    # Ignore
+    ignore = feature.loc[feature.click_mode > 0, df_col].copy()
+    for sn, cur_col in enumerate(col):
+        print('ignore', cur_col)
+        ignore[cur_col] = ignore.apply(
+            lambda item: 1 if item[cur_col] > 0 and item[cur_col] != item['click_mode'] else 0, axis=1)
+
+    profile = pd.DataFrame()
+    for sn, cur_col in enumerate(col):
+        print(cur_col)
+        click_total = click.groupby('pid')[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
+        ignore_total = ignore.groupby('pid')[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
+        percent = click_total / (click_total + ignore_total)
+        # print(type(percent))
+        profile = pd.concat([profile, percent], axis=1)  # .fillna(0)
+    return profile.fillna(0)
 
 
 @timed()
@@ -186,11 +218,11 @@ def get_query():
     train = get_original('train_queries.csv')
     train['label'] = 'train'
 
-    # day_ = pd.to_datetime(train.req_time).dt.date
-    # day_ = day_ - min(day_)
-    # day_ = day_.dt.days
-    # train['gp'] = pd.qcut(day_, 5).cat.codes.values
-    #
+    day_ = pd.to_datetime(train.req_time).dt.date
+    day_ = day_ - min(day_)
+    day_ = day_.dt.days
+
+
 
     test = get_original('test_queries.csv')
     test['label'] = 'test'
@@ -201,7 +233,7 @@ def get_query():
     train_query.pid = train_query.pid.astype(int)
     train_query.req_time = pd.to_datetime(train_query.req_time)
     train_query['date'] = train_query.req_time.dt.date
-    train_query['day'] = train_query.req_time.dt.day
+    train_query['day']  = day_
     train_query['weekday'] = train_query.req_time.dt.weekday
     train_query['hour'] = train_query.req_time.dt.hour
     train_query['weekend'] = train_query.weekday // 5
@@ -230,9 +262,23 @@ def get_query():
 def get_click():
     return get_original('train_clicks.csv')
 
+def get_profile(ratio_base):
+    profile = get_original('profiles.csv').astype(int)
+    # p_len = 66
+    # for i in range(p_len):
+    #     for j in range(i + 1, p_len):
+    #         new_p = profile[f'p{i}'] * profile[f'p{j}']
+    #         ratio = sum(new_p) / new_p.count()
+    #         if ratio > ratio_base:
+    #             logger.info(f'p{i:02}_p{j:02}:{sum(new_p)} , {ratio}')
+    #             profile[f'p{i:02}_p{j:02}'] = new_p
+    # logger.info(f'The shape of profile is:{profile.shape}')
+    return profile
+
 @timed()
+@lru_cache()
 @file_cache()
-def get_feature(group=None):
+def get_feature(ratio_base=0.1, group=None, ):
     query = get_query()
     plans = get_plans()
     click = get_click()
@@ -244,16 +290,12 @@ def get_feature(group=None):
 
     query = pd.merge(query, plans, how='left', on='sid')
 
-    if group is not None and 'profile' in group:
-        profile = get_original('profiles.csv').astype(int)
-        query = pd.merge(query, profile, how='left', on='pid')
+    #if group is not None and 'profile' in group:
+    profile = get_profile(ratio_base)
+    query = pd.merge(query, profile, how='left', on='pid')
 
     query = pd.merge(query, click, how='left', on='sid')
     query.loc[(query.label=='train') & pd.isna(query.click_mode), 'click_mode'] = 0
-
-
-    remove_list = ['o','d', 'label', 'req_time','click_time', 'day']
-    query = query.drop(remove_list,axis=1,errors='ignore')
 
     query.click_mode = query.click_mode.fillna(-1)
     query.click_mode = query.click_mode.astype(int)
@@ -266,12 +308,24 @@ def get_feature(group=None):
 
     query.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in query.columns]
 
+
+    # profile_per = get_click_percent(query, val_cut_point)
+    # query = pd.merge(query, profile_per.reset_index(), how='left', on='pid')
+
+    #Make click_mode(label) is in the end
+    # click_mode = query.click_mode.copy()
+    # del query['click_mode']
+    # query['click_mode'] = click_mode
+
+    remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'day']
+    query = query.drop(remove_list, axis=1, errors='ignore')
+
     return query.fillna(0)
 
 
 
 if __name__ == '__main__':
-    get_feature(('profile'))
 
-    get_feature(None)
+
+    get_feature()
 

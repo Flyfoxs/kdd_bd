@@ -1,6 +1,8 @@
 input_folder = './input/data_set_phase1'
 plan_items = ['distance', 'eta', 'price', 'transport_mode']
 
+val_cut_point = 60-7
+
 type_dict ={
  'sid':'int',
  'pid':'str',
