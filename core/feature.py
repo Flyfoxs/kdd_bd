@@ -263,6 +263,9 @@ def get_feature(group=None):
     query['d_hash_6']   = query['d_hash_6'].astype('category').cat.codes
     query['o_hash_6']   = query['o_hash_6'].astype('category').cat.codes
     query = query.set_index('sid')
+
+    query.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in query.columns]
+
     return query.fillna(0)
 
 
