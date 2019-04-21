@@ -134,7 +134,7 @@ def get_click_percent(feature, val_cut_point):
                                      axis=1)
 
     # Ignore
-    ignore = feature.loc[feature.click_mode > 0, df_col].copy()
+    ignore = feature.loc[feature.day <= val_cut_point, df_col].copy()
     for sn, cur_col in enumerate(col):
         print('ignore', cur_col)
         ignore[cur_col] = ignore.apply(
@@ -308,14 +308,14 @@ def get_feature(ratio_base=0.1, group=None, ):
 
     query.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in query.columns]
 
-
+    #
     # profile_per = get_click_percent(query, val_cut_point)
     # query = pd.merge(query, profile_per.reset_index(), how='left', on='pid')
 
     #Make click_mode(label) is in the end
-    # click_mode = query.click_mode.copy()
-    # del query['click_mode']
-    # query['click_mode'] = click_mode
+    click_mode = query.click_mode.copy()
+    del query['click_mode']
+    query['click_mode'] = click_mode
 
     remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'day']
     query = query.drop(remove_list, axis=1, errors='ignore')
