@@ -3,6 +3,8 @@ plan_items = ['distance', 'eta', 'price', 'transport_mode']
 
 val_cut_point = 60-7
 
+hash_precision = [6]
+
 type_dict ={
  'sid':'int',
  'pid':'str',

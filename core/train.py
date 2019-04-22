@@ -75,16 +75,20 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
         # np.random.seed(666)
         params = {
             'verbose':-1,
-            'num_leaves': 111,
+            'num_leaves': 70,
             'min_data_in_leaf': 149,
-            'feature_fraction':0.8,
-            'bagging_fraction':0.7,
+            'feature_fraction':0.65,
+            'lambda_l1': 0.9,
+            'lambda_l2': 1,
+            'max_depth': 6,
+
             'learning_rate': 0.1,
-            'lambda_l1': 0.1,
-            'lambda_l2': 0.2,
-            'max_depth': 4,
+            'bagging_fraction': 0.7,
+            # 'reg_alpha': 0.7,
+            # 'reg_lambda': 1,
+
             'objective': 'multiclass',
-            #'metric': 'None',
+            'metric': 'None',
             'num_class': num_class,
         # lightgbm.basic.LightGBMError: b'Number of classes should be specified and greater than 1 for multiclass training'
             # 'device':'gpu',
@@ -134,7 +138,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     if cv:
         score = f1_score(y_data.values, oof.argmax(axis=1), average='weighted')
 
-    logger.info(f'cv:{cv}, the final local score:{score:6.4f}, predictions:{predictions.shape}')
+    logger.info(f'cv:{cv}, the final local score:{score:6.4f}, predictions:{predictions.shape}, params:{params}')
     predictions = pd.DataFrame(predictions, index=X_test.index, columns=[str(i) for i in range(12)])
     predictions.index.name = 'sid'
     return predictions, score, feature_importance_df
@@ -154,11 +158,15 @@ def plot_import(feature_importance):
 
 from hyperopt import fmin, tpe, hp,space_eval,rand,Trials,partial,STATUS_OK
 def get_search_space():
-    space = {"num_leaves":hp.choice("num_leaves", range(80, 200,10)),
-             "max_depth": hp.choice("max_depth", range(3,6)),
-             'reg_alpha': hp.choice("reg_alpha", [0.8]),
-             'reg_lambda': hp.choice("reg_lambda", [1,5,50,190]),
-             'feature_fraction': hp.choice("feature_fraction", [0.75, 0.8]),
+    space = {"num_leaves":hp.choice("num_leaves", range(70, 100, 10)),
+             #"max_depth": hp.choice("max_depth", [7]),
+             'lambda_l1': hp.choice("lambda_l1", [0.9, 1, 10, 20]),
+             'lambda_l2': hp.choice("lambda_l2", [0.9, 1, 2, 5]),
+             'feature_fraction': hp.choice("feature_fraction", [0.55, 0.6,0.65, 0.7]),
+
+             'bagging_fraction': hp.choice("bagging_fraction", [0.55, 0.6, 0.65, 0.7]),
+             'min_data_in_leaf': hp.choice("min_data_in_leaf", range(70, 160, 10)),
+
              # 'list_type': hp.choice("list_type", range(0, 10)),
              }
     return space
@@ -169,12 +177,14 @@ def train_ex(args={}):
 
     for sn, drop_list in enumerate([
         #['date', 'day'],
-        ['date',],
+        ['date'],
     ]):
 
         for ratio in range(1):
             feature = get_feature()  # .fillna(0)
             feature = feature.drop(drop_list,axis=1,errors='ignore')
+
+            logger.info((feature.shape, list(feature.columns)))
 
             for col, type_ in feature.dtypes.sort_values().iteritems():
                 if type_ not in ['int64', 'int16', 'int32', 'float64']:
@@ -200,6 +210,7 @@ def train_ex(args={}):
     logger.info(res)
     return res
 
+@timed()
 def search():
     trials = Trials()
     space = get_search_space()
@@ -214,14 +225,13 @@ def search():
         logger.debug(f'score:{"%9.6f"%score}, para:{para}, misc:{misc}')
 
 
-
 if __name__ == '__main__':
-    #train_ex()
-    search()
+    train_ex()
+    #search()
 
 
 """"
-nohup python -u  core/train.py > search_logloss.log 2>&1 &
+nohup python -u  core/train.py > search_5.log 2>&1 &
 
-nohup python -u  core/train.py > sub.log 2>&1 &
+nohup python -u  core/train.py > sub_5_6.log 2>&1 &
 """

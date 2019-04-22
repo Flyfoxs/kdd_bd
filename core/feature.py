@@ -121,34 +121,36 @@ def get_original(file):
     return pd.read_csv(f'{input_folder}/{file}', dtype=type_dict)
 
 
-def get_click_percent(feature, val_cut_point):
+def get_profile_click_percent(feature):
     col = sorted([item for item in feature.columns if item.endswith('transport_mode')])
     df_col = col.copy()
-    df_col.extend(['click_mode', 'pid'])
+    df_col.extend(['click_mode', 'pid','day'])
     # Click
     logger.info(f'Only base on day from 0 to {val_cut_point} to cal click percentage')
-    click = feature.loc[feature.day <= val_cut_point, df_col].copy()
-    for sn, cur_col in enumerate(col):
-        print(cur_col)
+    click = feature.loc[:, df_col].copy()
+    for sn, cur_col in enumerate(tqdm(col, 'Click sum') ):
+        #print(cur_col)
         click[cur_col] = click.apply(lambda item: 1 if item[cur_col] > 0 and item[cur_col] == item['click_mode'] else 0,
                                      axis=1)
 
     # Ignore
-    ignore = feature.loc[feature.day <= val_cut_point, df_col].copy()
-    for sn, cur_col in enumerate(col):
-        print('ignore', cur_col)
+    ignore = feature.loc[:, df_col].copy()
+    for sn, cur_col in  enumerate(tqdm(col, 'Ignore sum') ):
+        #print('ignore', cur_col)
         ignore[cur_col] = ignore.apply(
             lambda item: 1 if item[cur_col] > 0 and item[cur_col] != item['click_mode'] else 0, axis=1)
 
     profile = pd.DataFrame()
-    for sn, cur_col in enumerate(col):
+    for sn, cur_col in enumerate(tqdm(col, 'Cal percentage') ):
         print(cur_col)
-        click_total = click.groupby('pid')[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
-        ignore_total = ignore.groupby('pid')[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
+        click_total = click.groupby(['pid','day'])[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
+        ignore_total = ignore.groupby(['pid','day'])[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
         percent = click_total / (click_total + ignore_total)
         # print(type(percent))
         profile = pd.concat([profile, percent], axis=1)  # .fillna(0)
-    return profile.fillna(0)
+    profile = profile.fillna(0).reset_index()
+    profile.day = profile.day+7
+    return profile
 
 
 @timed()
@@ -244,14 +246,14 @@ def get_query():
     train_query['d0'] = train_query.d.apply(lambda item: item.split(',')[0]).astype(float)
     train_query['d1'] = train_query.d.apply(lambda item: item.split(',')[1]).astype(float)
 
-    precision = 6
-    train_query[f'o_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.o1, row.o0, precision=precision),
-                                                           axis=1)
+    for precision in hash_precision:
+        train_query[f'o_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.o1, row.o0, precision=precision),
+                                                               axis=1)
 
-    train_query[f'd_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.d1, row.d0, precision=precision),
-                                                           axis=1)
+        train_query[f'd_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.d1, row.d0, precision=precision),
+                                                               axis=1)
 
-    train_query[f'o_d_hash_{precision}'] = train_query[f'o_hash_{precision}'] + '_' + train_query[f'd_hash_{precision}']
+        train_query[f'o_d_hash_{precision}'] = train_query[f'o_hash_{precision}'] + '_' + train_query[f'd_hash_{precision}']
 
     return train_query
 
@@ -262,7 +264,7 @@ def get_query():
 def get_click():
     return get_original('train_clicks.csv')
 
-def get_profile(ratio_base):
+def get_profile():
     profile = get_original('profiles.csv').astype(int)
     # p_len = 66
     # for i in range(p_len):
@@ -277,7 +279,7 @@ def get_profile(ratio_base):
 
 @timed()
 @lru_cache()
-@file_cache()
+#@file_cache()
 def get_feature(ratio_base=0.1, group=None, ):
     query = get_query()
     plans = get_plans()
@@ -291,7 +293,7 @@ def get_feature(ratio_base=0.1, group=None, ):
     query = pd.merge(query, plans, how='left', on='sid')
 
     #if group is not None and 'profile' in group:
-    profile = get_profile(ratio_base)
+    profile = get_profile()
     query = pd.merge(query, profile, how='left', on='pid')
 
     query = pd.merge(query, click, how='left', on='sid')
@@ -301,21 +303,22 @@ def get_feature(ratio_base=0.1, group=None, ):
     query.click_mode = query.click_mode.astype(int)
     query.pid        = query.pid.astype(int)
 
-    query['o_d_hash_6'] = query['o_d_hash_6'].astype('category').cat.codes
-    query['d_hash_6']   = query['d_hash_6'].astype('category').cat.codes
-    query['o_hash_6']   = query['o_hash_6'].astype('category').cat.codes
+    for precision in hash_precision:
+        query[f'o_d_hash_{precision}'] = query[f'o_d_hash_{precision}'].astype('category').cat.codes
+        query[f'd_hash_{precision}']   = query[f'd_hash_{precision}'].astype('category').cat.codes
+        query[f'o_hash_{precision}']   = query[f'o_hash_{precision}'].astype('category').cat.codes
     query = query.set_index('sid')
 
     query.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in query.columns]
 
-    #
-    # profile_per = get_click_percent(query, val_cut_point)
-    # query = pd.merge(query, profile_per.reset_index(), how='left', on='pid')
 
-    #Make click_mode(label) is in the end
-    click_mode = query.click_mode.copy()
-    del query['click_mode']
-    query['click_mode'] = click_mode
+    # profile_per = get_profile_click_percent(query)
+    # query = pd.merge(query, profile_per, how='left', on=['pid','day'])
+    #
+    # #Make click_mode(label) is in the end
+    # click_mode = query.click_mode.copy()
+    # del query['click_mode']
+    # query['click_mode'] = click_mode
 
     remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'day']
     query = query.drop(remove_list, axis=1, errors='ignore')
