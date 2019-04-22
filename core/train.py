@@ -214,7 +214,7 @@ def train_ex(args={}):
 def search():
     trials = Trials()
     space = get_search_space()
-    best = fmin(train_ex, space, algo=tpe.suggest, max_evals=20, trials=trials)
+    best = fmin(train_ex, space, algo=tpe.suggest, max_evals=30, trials=trials)
 
     logger.debug(f"Best: {best}")
     att_message = [trials.trial_attachments(trial)['message'] for trial in trials.trials]
@@ -226,12 +226,12 @@ def search():
 
 
 if __name__ == '__main__':
-    train_ex()
-    #search()
+    #train_ex()
+    search()
 
 
 """"
 nohup python -u  core/train.py > search_5.log 2>&1 &
 
-nohup python -u  core/train.py > sub_5_6.log 2>&1 &
+nohup python -u  core/train.py > sub.log 2>&1 &
 """

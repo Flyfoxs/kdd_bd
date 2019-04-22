@@ -99,7 +99,6 @@ def get_plan_mini(plan_file='test_plans.csv', model=1):
 
     sigle_model = sigle_model.fillna(0).astype(int)
 
-    #del sigle_model['transport_mode']
 
     if 'distance' not in sigle_model.columns:
         logger.warning(f'No plan is found for model:{model}')
@@ -111,6 +110,8 @@ def get_plan_mini(plan_file='test_plans.csv', model=1):
     mini_plan[col_list] = sigle_model[col_list]
 
     mini_plan = mini_plan.set_index(['sid', 'plan_time'])
+
+    del mini_plan['transport_mode']
 
     mini_plan.columns = [[str(model)] * len(mini_plan.columns), mini_plan.columns]
     return mini_plan
@@ -152,6 +153,26 @@ def get_profile_click_percent(feature):
     profile.day = profile.day+7
     return profile
 
+def get_plan_summary():
+    plan = get_plan_original()
+    res_list = []
+    for item in ['distance']:
+        col_list = [col for col in plan.columns if col[1] == item]
+        summary = plan.loc[:, col_list].copy()
+        # max_ = summary.where(summary > 0).max(axis=1)
+        # max_.name=f'{item}_max'
+        # res_list.append(max_)
+        min_  = summary.where(summary > 0).min(axis=1)
+
+        min_ = pd.cut(min_,20).cat.codes
+        min_.name = f'{item}_min_cat'
+        res_list.append(min_)
+    res = pd.concat(res_list, axis=1)
+    res = res.sort_index(axis=1, level=1)
+    return res
+
+
+#get_plan_summary()
 
 @timed()
 @file_cache()
@@ -193,13 +214,15 @@ def get_plans():
 
     seq = get_plan_model_sequence()
     plan[seq.columns] = seq[seq.columns]
-    #plan = pd.merge(plan,seq, how='left', on='sid')
 
+    # summay = get_plan_summary()
+    # plan[summay.columns] = summay[summay.columns]
 
     return plan.reset_index()
 
 @timed()
-@file_cache()
+@lru_cache()
+# @file_cache(overwrite=True)
 def get_plan_original():
     plan_list = []
     for plan_file in ['train_plans.csv', 'test_plans.csv']:
@@ -279,7 +302,7 @@ def get_profile():
 
 @timed()
 @lru_cache()
-#@file_cache()
+@file_cache()
 def get_feature(ratio_base=0.1, group=None, ):
     query = get_query()
     plans = get_plans()
