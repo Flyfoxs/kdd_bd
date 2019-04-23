@@ -5,7 +5,8 @@ import numpy as np
 
 from core.config import *
 from tqdm import tqdm
-
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from file_cache.utils.util_pandas import *
 from file_cache.cache import file_cache
@@ -226,6 +227,7 @@ def get_plan_percentage():
     return res
 
 @timed()
+@file_cache()
 def get_plans():
     """
     3, 5, 6 price is 0
@@ -246,6 +248,8 @@ def get_plans():
 
     # summay = get_plan_summary()
     # plan[summay.columns] = summay[summay.columns]
+
+    plan.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plan.columns]
 
     return plan.reset_index()
 
@@ -272,21 +276,22 @@ def get_query():
     train = get_original('train_queries.csv')
     train['label'] = 'train'
 
-    day_ = pd.to_datetime(train.req_time).dt.date
-    day_ = day_ - min(day_)
-    day_ = day_.dt.days
-
-
-
     test = get_original('test_queries.csv')
     test['label'] = 'test'
-    # test['gp'] = -1
 
     train_query = pd.concat([train, test])
+
+
+
     train_query.pid = train_query.pid.fillna(0)
     train_query.pid = train_query.pid.astype(int)
     train_query.req_time = pd.to_datetime(train_query.req_time)
     train_query['date'] = train_query.req_time.dt.date
+
+    day_ = pd.to_datetime(train_query.req_time).dt.date
+    day_ = day_ - min(day_)
+    day_ = day_.dt.days
+
     train_query['day']  = day_
     train_query['weekday'] = train_query.req_time.dt.weekday
     train_query['hour'] = train_query.req_time.dt.hour
@@ -329,17 +334,75 @@ def get_profile():
     # logger.info(f'The shape of profile is:{profile.shape}')
     return profile
 
+def get_feature_partition(cut_begin=48, cut_end=60):
+    feature = get_feature( )
+    feature = feature.loc[(feature['day'] >= cut_begin)
+                          & (feature['day'] <= cut_end)
+                          & (feature['click_mode'] >=0 )
+                            ]
+    sample =feature.click_mode.value_counts().sort_index().to_frame()
+    sample = sample/sample.sum()
+    sample['type']=f'sample_{cut_begin}_{cut_end}'
+    return sample
+
+
+
 @timed()
-@lru_cache()
+def resample_train(begin=54, end=60):
+    feature = get_feature()
+    feature = feature.loc[feature.click_mode>=0]
+    gp = feature.click_mode.value_counts()
+    gp = gp.loc[gp.index>=0].sort_index()
+    base = gp.min()
+
+    ratio = get_feature_partition(cut_begin=begin, cut_end=end)
+    ratio = ratio.click_mode/ratio.click_mode.min()
+    sample_count = round(ratio*base).astype(int)
+
+    new_df = feature.loc[feature.click_mode==-1]
+
+    for i in tqdm(range(0, 12), 'resample base on ratio'):
+        cnt = sample_count.loc[i]
+        tmp_df = feature.loc[feature.click_mode == i].sample(cnt)
+        new_df = pd.concat([new_df, tmp_df])
+    return new_df
+
+
+def get_train_test(drop_list):
+    #feature = get_feature()  # .fillna(0)
+
+    feature = resample_train()
+
+    remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'day', 'plan_time','plan_time_', ]
+    feature = feature.drop(remove_list, axis=1, errors='ignore')
+    feature = feature.drop(drop_list, axis=1, errors='ignore')
+
+    logger.info((feature.shape, list(feature.columns)))
+
+    for col, type_ in feature.dtypes.sort_values().iteritems():
+        if type_ not in ['int64', 'int16', 'int32', 'float64']:
+            logger.error(col, type_)
+
+    feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+
+    train_data = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)]
+
+    X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
+
+    return train_data, X_test
+
+@timed()
+#@lru_cache()
 @file_cache()
 def get_feature(ratio_base=0.1, group=None, ):
     query = get_query()
     plans = get_plans()
+    #plans.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plans.columns]
+
     click = get_click()
 
 
-    del plans['plan_time']
-
+    #del plans['plan_time']
 
 
     query = pd.merge(query, plans, how='left', on='sid')
@@ -349,7 +412,8 @@ def get_feature(ratio_base=0.1, group=None, ):
     query = pd.merge(query, profile, how='left', on='pid')
 
     query = pd.merge(query, click, how='left', on='sid')
-    query.loc[(query.label=='train') & pd.isna(query.click_mode), 'click_mode'] = 0
+    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0_ > 0), 'click_mode']  = 0
+    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0_ == 0), 'click_mode'] = -2
 
     query.click_mode = query.click_mode.fillna(-1)
     query.click_mode = query.click_mode.astype(int)
@@ -361,7 +425,6 @@ def get_feature(ratio_base=0.1, group=None, ):
         query[f'o_hash_{precision}']   = query[f'o_hash_{precision}'].astype('category').cat.codes
     query = query.set_index('sid')
 
-    query.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in query.columns]
 
 
     # profile_per = get_profile_click_percent(query)
@@ -372,8 +435,6 @@ def get_feature(ratio_base=0.1, group=None, ):
     # del query['click_mode']
     # query['click_mode'] = click_mode
 
-    remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'day']
-    query = query.drop(remove_list, axis=1, errors='ignore')
 
     return query.fillna(0)
 
@@ -383,4 +444,7 @@ if __name__ == '__main__':
 
 
     get_feature()
+    """
+    nohup python -u  core/feature.py   > feature.log  2>&1 &
+    """
 

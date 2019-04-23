@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold, StratifiedKFold, GroupKFold
 from sklearn.metrics import roc_auc_score,accuracy_score
 from sklearn.metrics import f1_score
+import fire
 
 def lgb_f1_score(y_hat, data):
     y_true = data.get_label()
@@ -45,29 +46,41 @@ def gen_sub(file):
     res[['recommend_mode']].to_csv(sub_file, quoting=csv.QUOTE_ALL, header=None)
     logger.info(f'Sub file save to {sub_file}')
 
+#
+# def get_groups(cut_point = val_cut_point):
+#     feature = get_feature()
+#     #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+#     feature = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)].reset_index(drop=True)
+#     day_ = feature.date
+#     day_ = day_ - min(day_)
+#     day_ = day_.dt.days
+#     #end = max(day_)
+#     return [(day_.loc[day_<=cut_point].index.values ,day_.loc[day_>cut_point].index.values) ]
 
-def get_groups(cut_point = val_cut_point):
-    feature = get_feature()
-    #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
-    feature = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)].reset_index(drop=True)
-    day_ = feature.date
-    day_ = day_ - min(day_)
-    day_ = day_.dt.days
-    #end = max(day_)
-    return [(day_.loc[day_<=cut_point].index.values ,day_.loc[day_>cut_point].index.values) ]
 
+# dic_ = df_analysis['mode'].value_counts(normalize = True)
+
+##df_analysis['mode']是真实的label的情况
+#
+# def get_weighted_fscore(y_pred, y_true):
+#     f_score = 0
+#     for i in range(12):
+#         yt = y_true == i
+#         yp = y_pred == i
+#         f_score += dic_[i] * f1_score(y_true=yt, y_pred= yp)
+#     print(f_score)
 
 @timed()
 def train_lgb(X_data, y_data, X_test, cv=False, args={}):
-
+    num_fold = 5
     num_class = 12
-
+    folds = KFold(n_splits=num_fold, shuffle=True, random_state=666)
     oof = np.zeros((len(y_data), num_class))
     predictions = np.zeros((len(X_test), num_class))
     # start = time.time()
     feature_importance_df = pd.DataFrame()
 
-    for fold_, (trn_idx, val_idx) in enumerate(get_groups()):
+    for fold_, (trn_idx, val_idx) in enumerate(folds.split(X_data.values, y_data.values)):
         logger.info(f"fold n°{fold_}, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape} " )
         trn_data = lgb.Dataset(X_data.iloc[trn_idx], y_data.iloc[trn_idx])
         val_data = lgb.Dataset(X_data.iloc[val_idx], y_data.iloc[val_idx], reference=trn_data)
@@ -145,8 +158,6 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
 
 
 def plot_import(feature_importance):
-    import matplotlib.pyplot as plt
-    import seaborn as sns
     cols = feature_importance[["feature", "importance"]].groupby("feature").mean().sort_values(
         by="importance", ascending=False)[:50].index
 
@@ -181,30 +192,21 @@ def train_ex(args={}):
     ]):
 
         for ratio in range(1):
-            feature = get_feature()  # .fillna(0)
-            feature = feature.drop(drop_list,axis=1,errors='ignore')
+            train_data, X_test = get_train_test(drop_list)
 
-            logger.info((feature.shape, list(feature.columns)))
-
-            for col, type_ in feature.dtypes.sort_values().iteritems():
-                if type_ not in ['int64', 'int16', 'int32', 'float64']:
-                    logger.error(col, type_)
-
-            feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
-
-            train_data = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ >0)]
             X_data, y_data = train_data.iloc[:, :-1], train_data.iloc[:, -1]
 
-            X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
-
-            for cv in [False]:
+            for cv in [True]:
                 res, score, feature_importance = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
 
-                file = f'./output/res_ratio_{ratio:3.1f}_{sn}_{feature.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.csv'
-                res.to_csv(file)
-                gen_sub(file)
+                if len(args) == 0 :
+                    file = f'./output/res_ratio_{ratio:3.1f}_{sn}_{train_data.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                    res.to_csv(file)
+                    gen_sub(file)
+                else:
+                    logger.debug('Search model, do not save file')
 
-                feature_importance.to_hdf(f'./output/fi_drop_sn_{sn},_{feature.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
+                feature_importance.to_hdf(f'./output/fi_drop_sn_{sn},_{train_data.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
 
     res = { 'loss': -score, 'status': STATUS_OK, 'attachments': {"message": f'{args} ', } }
     logger.info(res)
@@ -226,12 +228,13 @@ def search():
 
 
 if __name__ == '__main__':
-    train_ex()
+    fire.Fire()
+    # train_ex()
     # search()
 
 
 """"
-nohup python -u  core/train.py > min.log 2>&1 &
+nohup python -u  core/train.py train_ex > train_ex_cv_v3.log 2>&1 &
 
-nohup python -u  core/train.py > sub.log 2>&1 &
+nohup python -u  core/train.py search > search.log  2>&1 &
 """
