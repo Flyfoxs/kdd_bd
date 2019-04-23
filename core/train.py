@@ -75,11 +75,11 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
         # np.random.seed(666)
         params = {
             'verbose':-1,
-            'num_leaves': 70,
-            'min_data_in_leaf': 149,
+            'num_leaves': 80,
+            'min_data_in_leaf': 100,
             'feature_fraction':0.65,
-            'lambda_l1': 0.9,
-            'lambda_l2': 1,
+            'lambda_l1': 20,
+            'lambda_l2': 5,
             'max_depth': 6,
 
             'learning_rate': 0.1,
@@ -158,10 +158,10 @@ def plot_import(feature_importance):
 
 from hyperopt import fmin, tpe, hp,space_eval,rand,Trials,partial,STATUS_OK
 def get_search_space():
-    space = {"num_leaves":hp.choice("num_leaves", range(70, 100, 10)),
+    space = {"num_leaves":hp.choice("num_leaves", range(60, 100, 10)),
              #"max_depth": hp.choice("max_depth", [7]),
-             'lambda_l1': hp.choice("lambda_l1", [0.9, 1, 10, 20]),
-             'lambda_l2': hp.choice("lambda_l2", [0.9, 1, 2, 5]),
+             'lambda_l1': hp.choice("lambda_l1", range(10, 100, 10)),
+             'lambda_l2': hp.choice("lambda_l2", range(5,50,5)),
              'feature_fraction': hp.choice("feature_fraction", [0.55, 0.6,0.65, 0.7]),
 
              'bagging_fraction': hp.choice("bagging_fraction", [0.55, 0.6, 0.65, 0.7]),
@@ -226,12 +226,12 @@ def search():
 
 
 if __name__ == '__main__':
-    #train_ex()
-    search()
+    train_ex()
+    # search()
 
 
 """"
-nohup python -u  core/train.py > search_5.log 2>&1 &
+nohup python -u  core/train.py > min.log 2>&1 &
 
 nohup python -u  core/train.py > sub.log 2>&1 &
 """

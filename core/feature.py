@@ -172,7 +172,32 @@ def get_plan_summary():
     return res
 
 
-#get_plan_summary()
+@timed()
+@file_cache()
+def get_plan_percentage_min():
+    """
+    Convert plan from amount/qty to percentage
+    :param plan:
+    :return:
+    """
+    plan = get_plan_original()
+    res_list = []
+    for item in plan_items:
+        col_list = [col for col in plan.columns if col[1] == item]
+        plan_percent = plan.loc[:, col_list].copy()
+        total = plan_percent.where(plan_percent > 0).min(axis=1)
+        for col in plan_percent:
+            plan_percent[(str(col[0]), f'{col[1]}_min_p')] = round(plan_percent[col] / total, 4)
+            del plan_percent[col]
+
+        res_list.append(plan_percent)
+    res = pd.concat(res_list, axis=1)
+
+    # res.columns.set_levels([ f'{item[1]}_p' for item in res.columns ],level=1,inplace=True)
+    # res.columns = [ (item[0], f'{item[1]}_p') for item in res.columns]
+    res = res.sort_index(axis=1, level=1)
+    return res
+
 
 @timed()
 @file_cache()
@@ -189,7 +214,7 @@ def get_plan_percentage():
         plan_percent = plan.loc[:, col_list].copy()
         total = plan_percent.max(axis=1)
         for col in plan_percent:
-            plan_percent[(str(col[0]), f'{col[1]}_p')] = round(plan_percent[col] / total, 4)
+            plan_percent[(str(col[0]), f'{col[1]}_max_p')] = round(plan_percent[col] / total, 4)
             del plan_percent[col]
 
         res_list.append(plan_percent)
@@ -211,6 +236,10 @@ def get_plans():
 
     plan_pg = get_plan_percentage()
     plan[plan_pg.columns] = plan_pg[plan_pg.columns]
+
+    # plan_pg = get_plan_percentage_min()
+    # plan[plan_pg.columns] = plan_pg[plan_pg.columns]
+    #
 
     seq = get_plan_model_sequence()
     plan[seq.columns] = seq[seq.columns]
