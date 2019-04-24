@@ -32,6 +32,7 @@ def gen_sub(file):
     feature = get_feature()  # .fillna(0)
     #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
     adjust_sid = feature.loc[(feature.click_mode == -1) & (feature.o_seq_0_ == 0)]
+    #10733
     len_prepare_adjust = len(adjust_sid)
     real_need_to_adjust = len(res.loc[adjust_sid.index])
     if  len_prepare_adjust != real_need_to_adjust:
@@ -46,16 +47,16 @@ def gen_sub(file):
     res[['recommend_mode']].to_csv(sub_file, quoting=csv.QUOTE_ALL, header=None)
     logger.info(f'Sub file save to {sub_file}')
 
-#
-# def get_groups(cut_point = val_cut_point):
-#     feature = get_feature()
-#     #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
-#     feature = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)].reset_index(drop=True)
-#     day_ = feature.date
-#     day_ = day_ - min(day_)
-#     day_ = day_.dt.days
-#     #end = max(day_)
-#     return [(day_.loc[day_<=cut_point].index.values ,day_.loc[day_>cut_point].index.values) ]
+
+def get_groups(cut_point = val_cut_point):
+    feature = get_feature()
+    #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+    feature = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)].reset_index(drop=True)
+    day_ = feature.date
+    day_ = day_ - min(day_)
+    day_ = day_.dt.days
+    #end = max(day_)
+    return [(day_.loc[day_<=cut_point].index.values ,day_.loc[day_>cut_point].index.values) ]
 
 
 # dic_ = df_analysis['mode'].value_counts(normalize = True)
@@ -70,18 +71,43 @@ def gen_sub(file):
 #         f_score += dic_[i] * f1_score(y_true=yt, y_pred= yp)
 #     print(f_score)
 
+class manual_split:
+    def split(self,X_data, cut_point):
+        tmp = X_data.copy()
+        tmp = tmp.reset_index()
+
+        feature = get_feature()
+        sid_val = feature.loc[(feature.day>=cut_point) & (feature.day<=60)].index.values
+
+        sid_train = feature.loc[feature.day < cut_point].index.values
+
+
+        train_index = tmp.loc[tmp.sid.isin(sid_train)].index.values
+        val_index   = tmp.loc[tmp.sid.isin(sid_val)].index.values
+        return [(train_index, val_index)]
+
+
+
 @timed()
 def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     num_fold = 5
     num_class = 12
-    folds = KFold(n_splits=num_fold, shuffle=True, random_state=666)
+
     oof = np.zeros((len(y_data), num_class))
     predictions = np.zeros((len(X_test), num_class))
     # start = time.time()
     feature_importance_df = pd.DataFrame()
 
-    for fold_, (trn_idx, val_idx) in enumerate(folds.split(X_data.values, y_data.values)):
-        logger.info(f"fold n°{fold_}, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape} " )
+    if cv:
+        folds = KFold(n_splits=num_fold, shuffle=True, random_state=666)
+        split_fold = folds.split(X_data.values, y_data.values)
+    else:
+        folds = manual_split()
+        split_fold = folds.split(X_data, 60-14)
+
+
+    for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
+        logger.info(f"fold n°{fold_}, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape}, test:{X_test.shape} " )
         trn_data = lgb.Dataset(X_data.iloc[trn_idx], y_data.iloc[trn_idx])
         val_data = lgb.Dataset(X_data.iloc[val_idx], y_data.iloc[val_idx], reference=trn_data)
 
@@ -196,7 +222,7 @@ def train_ex(args={}):
 
             X_data, y_data = train_data.iloc[:, :-1], train_data.iloc[:, -1]
 
-            for cv in [True]:
+            for cv in [False,True]:
                 res, score, feature_importance = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
 
                 if len(args) == 0 :

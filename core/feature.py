@@ -350,7 +350,7 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 @timed()
 def resample_train(begin=54, end=60):
     feature = get_feature()
-    feature = feature.loc[feature.click_mode>=0]
+    feature = feature.loc[feature.click_mode>=-1]
     gp = feature.click_mode.value_counts()
     gp = gp.loc[gp.index>=0].sort_index()
     base = gp.min()
@@ -365,15 +365,16 @@ def resample_train(begin=54, end=60):
         cnt = sample_count.loc[i]
         tmp_df = feature.loc[feature.click_mode == i].sample(cnt)
         new_df = pd.concat([new_df, tmp_df])
+    logger.info(new_df.click_mode.value_counts().sort_index())
     return new_df
 
 
-def get_train_test(drop_list):
+def get_train_test(drop_list=[]):
     #feature = get_feature()  # .fillna(0)
 
     feature = resample_train()
 
-    remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'day', 'plan_time','plan_time_', ]
+    remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'date', 'day', 'plan_time','plan_time_', ]
     feature = feature.drop(remove_list, axis=1, errors='ignore')
     feature = feature.drop(drop_list, axis=1, errors='ignore')
 
@@ -413,7 +414,7 @@ def get_feature(ratio_base=0.1, group=None, ):
 
     query = pd.merge(query, click, how='left', on='sid')
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0_ > 0), 'click_mode']  = 0
-    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0_ == 0), 'click_mode'] = -2
+    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0_), 'click_mode'] = -2
 
     query.click_mode = query.click_mode.fillna(-1)
     query.click_mode = query.click_mode.astype(int)
