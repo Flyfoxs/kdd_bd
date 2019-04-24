@@ -370,9 +370,9 @@ def resample_train(begin=54, end=60):
 
 
 def get_train_test(drop_list=[]):
-    #feature = get_feature()  # .fillna(0)
+    feature = get_feature()  # .fillna(0)
 
-    feature = resample_train()
+    #feature = resample_train()
 
     remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'date', 'day', 'plan_time','plan_time_', ]
     feature = feature.drop(remove_list, axis=1, errors='ignore')
@@ -386,7 +386,7 @@ def get_train_test(drop_list=[]):
 
     feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
 
-    train_data = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)]
+    train_data = feature.loc[(feature.click_mode >= 0)]
 
     X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
 
@@ -414,7 +414,7 @@ def get_feature(ratio_base=0.1, group=None, ):
 
     query = pd.merge(query, click, how='left', on='sid')
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0_ > 0), 'click_mode']  = 0
-    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0_), 'click_mode'] = -2
+    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0_), 'click_mode'] = 0 # -2
 
     query.click_mode = query.click_mode.fillna(-1)
     query.click_mode = query.click_mode.astype(int)

@@ -21,6 +21,23 @@ def lgb_f1_score(y_hat, data):
     return 'f1', round(score, 4) , True
 
 
+def vali_sub(sub):
+    feature = get_feature()
+
+    test = feature.loc[(feature.label=='test')&
+                          (feature.click_mode == -1) &
+                          (feature.o_seq_0_ == 0) ]
+
+    if sub is not None:
+        check_cnt = sub.loc[test.index].iloc[:,-1].sum()
+        if check_cnt > 0:
+            logger.error(f'❌There are {check_cnt} predictions is incorrect')
+        else:
+            logger.info(f'✔️No plan prediction is incorrect')
+    else:
+        return test
+
+
 def gen_sub(file):
     # file = './output/res_False_0.6802.csv'
     res = pd.read_csv(file)
@@ -28,35 +45,37 @@ def gen_sub(file):
     res = res.set_index('sid')
     res['recommend_mode'] = res.idxmax(axis=1)
 
-    # Fix the data if no plan at all
-    feature = get_feature()  # .fillna(0)
-    #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
-    adjust_sid = feature.loc[(feature.click_mode == -1) & (feature.o_seq_0_ == 0)]
-    #10733
-    len_prepare_adjust = len(adjust_sid)
-    real_need_to_adjust = len(res.loc[adjust_sid.index])
-    if  len_prepare_adjust != real_need_to_adjust:
-        raise Exception(f'Error when adjust 0 model, prepare:{len_prepare_adjust}, real:{real_need_to_adjust}')
-    logger.info(f'Manually adjust these records:{len_prepare_adjust}, the original value is:')
-    logger.info(res.loc[adjust_sid.index, 'recommend_mode'].value_counts())
+    vali_sub(res)
 
-    res.loc[adjust_sid.index, 'recommend_mode'] = 0
+    # # Fix the data if no plan at all
+    # feature = get_feature()  # .fillna(0)
+    # #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+    # adjust_sid = feature.loc[(feature.click_mode == -1) & (feature.o_seq_0_ == 0)]
+    # #10733
+    # len_prepare_adjust = len(adjust_sid)
+    # real_need_to_adjust = len(res.loc[adjust_sid.index])
+    # if  len_prepare_adjust != real_need_to_adjust:
+    #     raise Exception(f'Error when adjust 0 model, prepare:{len_prepare_adjust}, real:{real_need_to_adjust}')
+    # logger.info(f'Manually adjust these records:{len_prepare_adjust}, the original value is:')
+    # logger.info(res.loc[adjust_sid.index, 'recommend_mode'].value_counts())
+    #
+    # res.loc[adjust_sid.index, 'recommend_mode'] = 0
 
     import csv
     sub_file = file.replace('res', 'sub/sub')
-    res[['recommend_mode']].to_csv(sub_file, quoting=csv.QUOTE_ALL, header=None)
+    res[['recommend_mode']].to_csv(sub_file, quoting=csv.QUOTE_ALL)
     logger.info(f'Sub file save to {sub_file}')
 
 
-def get_groups(cut_point = val_cut_point):
-    feature = get_feature()
-    #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
-    feature = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)].reset_index(drop=True)
-    day_ = feature.date
-    day_ = day_ - min(day_)
-    day_ = day_.dt.days
-    #end = max(day_)
-    return [(day_.loc[day_<=cut_point].index.values ,day_.loc[day_>cut_point].index.values) ]
+# def get_groups(cut_point = val_cut_point):
+#     feature = get_feature()
+#     #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+#     feature = feature.loc[(feature.click_mode >= 0) & (feature.o_seq_0_ > 0)].reset_index(drop=True)
+#     day_ = feature.date
+#     day_ = day_ - min(day_)
+#     day_ = day_.dt.days
+#     #end = max(day_)
+#     return [(day_.loc[day_<=cut_point].index.values ,day_.loc[day_>cut_point].index.values) ]
 
 
 # dic_ = df_analysis['mode'].value_counts(normalize = True)
@@ -103,7 +122,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
         split_fold = folds.split(X_data.values, y_data.values)
     else:
         folds = manual_split()
-        split_fold = folds.split(X_data, 60-14)
+        split_fold = folds.split(X_data, 60-6)
 
 
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
@@ -222,11 +241,11 @@ def train_ex(args={}):
 
             X_data, y_data = train_data.iloc[:, :-1], train_data.iloc[:, -1]
 
-            for cv in [False,True]:
+            for cv in [False]:
                 res, score, feature_importance = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
 
                 if len(args) == 0 :
-                    file = f'./output/res_ratio_{ratio:3.1f}_{sn}_{train_data.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                    file = f'./output/res_re_samp_{ratio:3.1f}_{sn}_{train_data.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.csv'
                     res.to_csv(file)
                     gen_sub(file)
                 else:
@@ -260,7 +279,7 @@ if __name__ == '__main__':
 
 
 """"
-nohup python -u  core/train.py train_ex > train_ex_cv_v3.log 2>&1 &
+nohup python -u  core/train.py train_ex > train_ex.log 2>&1 &
 
 nohup python -u  core/train.py search > search.log  2>&1 &
 """
