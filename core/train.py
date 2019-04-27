@@ -20,22 +20,41 @@ def lgb_f1_score(y_hat, data):
     score = f1_score(y_true, y_hat, average='weighted')
     return 'f1', round(score, 4) , True
 
-
+@timed()
 def vali_sub(sub):
     feature = get_feature()
 
-    test = feature.loc[(feature.label=='test')&
-                          (feature.click_mode == -1) &
-                          (feature.o_seq_0_ == 0) ]
+    test = feature.loc[(feature.label == 'test') &
+                       (feature.click_mode == -1) &
+                       (feature.o_seq_0 == 0)]
 
-    if sub is not None:
-        check_cnt = sub.loc[test.index].iloc[:,-1].sum()
-        if check_cnt > 0:
-            logger.error(f'❌There are {check_cnt} predictions is incorrect')
+    choose = sub.join(feature)
+
+    col_list = [f'o_seq_{i}' for i in range(7)]
+    col_list.append('recommend_mode')
+    choose = choose[col_list].astype(int)
+
+    def check_error(row):
+        # print(row.recommend_mode, row.iloc[ :-1].values)
+        if row.o_seq_0 == 0 and row.recommend_mode == 0:
+            return 'zero-0'
+        elif row.recommend_mode == 0:
+            return 'zero-other'
+        elif row.recommend_mode > 0 and row.recommend_mode in row.iloc[:-1].values:
+            return 'correct'
+        elif row.recommend_mode > 0:
+            return 'error'
         else:
-            logger.info(f'✔️No plan prediction is incorrect')
+            return 'other'
+
+    choose['label'] = choose.apply(lambda item: check_error(item), axis=1)
+    error = choose.loc[choose.label.isin(['error', 'other'])]
+    if len(error) > 0:
+        logger.error(f'❌There are {len(error) } predictions is incorrect.\n {error.label.value_counts()}')
     else:
-        return test
+        logger.info(f'✔️No error is found')
+
+    return choose
 
 
 def gen_sub(file):
@@ -91,25 +110,110 @@ def gen_sub(file):
 #     print(f_score)
 
 class manual_split:
-    def split(self,X_data, cut_point):
-        tmp = X_data.copy()
+    def split(self, X_data, cut_point):
+        #return self.split_range( X_data, cut_point)
+
+        return self.split_group(X_data)
+
+
+    def split_range(self,X_data,  cut_point):
+        feature = get_feature()
+
+        tmp = feature.loc[X_data.index]
         tmp = tmp.reset_index()
 
+
+        return [(tmp[(tmp.day>=cut_point-7*50) & (tmp.day<=cut_point-1) ].index,
+                 tmp[(tmp.day>=cut_point) & (tmp.day<=60) ].index)]
+
+    def split_sk(self, X_data):
         feature = get_feature()
-        sid_val = feature.loc[(feature.day>=cut_point) & (feature.day<=60)].index.values
+        feature = feature.loc[X_data.index]
 
-        sid_train = feature.loc[feature.day < cut_point].index.values
+        feature = feature.reset_index()
+
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=666)
+        split_fold = folds.split(feature.values, feature.click_mode.values)
+
+        return tqdm(split_fold)
 
 
-        train_index = tmp.loc[tmp.sid.isin(sid_train)].index.values
-        val_index   = tmp.loc[tmp.sid.isin(sid_val)].index.values
-        return [(train_index, val_index)]
+    def split_group(self,X_data,  begin_point=0):
+        feature = get_feature()
+        feature = feature.loc[X_data.index]
+
+        feature = feature.reset_index()
+        val = feature[(feature.day >= 54) & (feature.day <= 60)]
+        train = feature.loc[(feature.day >= begin_point) & (feature.day < 54)]
+
+
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=666)
+        split_fold = folds.split(train.values, train.click_mode.values)
+
+        res = []
+        for trn_inx, _ in tqdm((split_fold), 'Split group'):
+
+            res.append((train.iloc[trn_inx].index, val.index))
+        return res
+
+
+    def split_ratio(self,X_data,  cut_point):
+        feature = get_feature()
+
+        tmp = feature.loc[X_data.index]
+        tmp = tmp.reset_index()
+
+        ratio = get_feature_partition(cut_begin=cut_point, cut_end=60)
+        ratio = ratio.click_mode / ratio.click_mode.min()
+
+        df_list = []
+        for day in tqdm(range(0, cut_point), 'resample base on day'):
+            train = tmp.loc[tmp.day == day]
+            gp = train.click_mode.value_counts()
+            gp = gp.loc[gp.index >= 0].sort_index()
+            base = gp.min()
+            sample_count = round(ratio * base).astype(int)
+
+            for i in tqdm(range(0, 12), 'resample base on ratio'):
+                cnt = sample_count.loc[i]
+                df_base = train.loc[train.click_mode == i]
+                if cnt==0 or cnt > len(df_base):
+                    logger.warning(f'cnt>len(df_base), {cnt}>{len(df_base)}')
+                    cnt = min(cnt, len(df_base))
+                tmp_df = df_base.sample(cnt)
+                df_list.append(tmp_df)
+        logger.debug(f'DF_list size: {len(df_list)}')
+        new_df = pd.concat(df_list)
+        logger.info(new_df.click_mode.value_counts().sort_index())
+        return [(new_df.index, tmp[tmp.day>=cut_point].index)]
+
+
+    @timed()
+    def resample_train(begin=54, end=60):
+        feature = get_feature()
+        feature = feature.loc[feature.click_mode>=-1]
+        gp = feature.click_mode.value_counts()
+        gp = gp.loc[gp.index>=0].sort_index()
+        base = gp.min()
+
+        ratio = get_feature_partition(cut_begin=begin, cut_end=end)
+        ratio = ratio.click_mode/ratio.click_mode.min()
+        sample_count = round(ratio*base).astype(int)
+
+        new_df = feature.loc[feature.click_mode==-1]
+
+        for i in tqdm(range(0, 12), 'resample base on ratio'):
+            cnt = sample_count.loc[i]
+            tmp_df = feature.loc[feature.click_mode == i].sample(cnt)
+            new_df = pd.concat([new_df, tmp_df])
+        logger.info(new_df.click_mode.value_counts().sort_index())
+        return new_df
 
 
 
 @timed()
 def train_lgb(X_data, y_data, X_test, cv=False, args={}):
-    num_fold = 5
+
     num_class = 12
 
     oof = np.zeros((len(y_data), num_class))
@@ -117,18 +221,19 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     # start = time.time()
     feature_importance_df = pd.DataFrame()
 
-    if cv:
-        folds = KFold(n_splits=num_fold, shuffle=True, random_state=666)
-        split_fold = folds.split(X_data.values, y_data.values)
-    else:
-        folds = manual_split()
-        split_fold = folds.split(X_data, 60-6)
-
+    # if cv:
+    #     folds = KFold(n_splits=num_fold, shuffle=True, random_state=666)
+    #     split_fold = folds.split(X_data.values, y_data.values)
+    # else:
+    #     folds = manual_split()
+    #     split_fold = folds.split(X_data, 60-6)
+    folds = manual_split()
+    split_fold = folds.split(X_data, None)
 
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
-        logger.info(f"fold n°{fold_}, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape}, test:{X_test.shape} " )
-        trn_data = lgb.Dataset(X_data.iloc[trn_idx], y_data.iloc[trn_idx])
-        val_data = lgb.Dataset(X_data.iloc[val_idx], y_data.iloc[val_idx], reference=trn_data)
+        logger.info(f"fold n°{fold_}, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape}, test:{X_test.shape}, cat:{cate_cols} " )
+        trn_data = lgb.Dataset(X_data.iloc[trn_idx], y_data.iloc[trn_idx], categorical_feature=cate_cols)
+        val_data = lgb.Dataset(X_data.iloc[val_idx], y_data.iloc[val_idx], categorical_feature=cate_cols, reference=trn_data)
 
         # np.random.seed(666)
         params = {
@@ -180,7 +285,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
         if cv:
             predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
         elif len(args)==0: #not Search model
-            all_train = lgb.Dataset(X_data, y_data)
+            all_train = lgb.Dataset(X_data, y_data, categorical_feature=cate_cols)
             clf = lgb.train(params,
                             all_train,
                             # num_round,
@@ -199,10 +304,12 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     logger.info(f'cv:{cv}, the final local score:{score:6.4f}, predictions:{predictions.shape}, params:{params}')
     predictions = pd.DataFrame(predictions, index=X_test.index, columns=[str(i) for i in range(12)])
     predictions.index.name = 'sid'
-    return predictions, score, feature_importance_df
+    return predictions, score, feature_importance_df, cv or clf.best_iteration
 
 
 def plot_import(feature_importance):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
     cols = feature_importance[["feature", "importance"]].groupby("feature").mean().sort_values(
         by="importance", ascending=False)[:50].index
 
@@ -241,11 +348,11 @@ def train_ex(args={}):
 
             X_data, y_data = train_data.iloc[:, :-1], train_data.iloc[:, -1]
 
-            for cv in [False]:
-                res, score, feature_importance = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
+            for cv in [False,]:
+                res, score, feature_importance, best_iteration = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
 
                 if len(args) == 0 :
-                    file = f'./output/res_re_samp_{ratio:3.1f}_{sn}_{train_data.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                    file = f'./output/res_{train_data.shape[1]}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
                     res.to_csv(file)
                     gen_sub(file)
                 else:
@@ -279,7 +386,7 @@ if __name__ == '__main__':
 
 
 """"
-nohup python -u  core/train.py train_ex > train_ex.log 2>&1 &
+nohup python -u  core/train.py train_ex > train_profile_lda.log 2>&1 &
 
 nohup python -u  core/train.py search > search.log  2>&1 &
 """

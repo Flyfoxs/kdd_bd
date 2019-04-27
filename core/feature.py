@@ -2,6 +2,7 @@ import sys
 import os
 import pandas as pd
 import numpy as np
+from sklearn.decomposition import TruncatedSVD
 
 from core.config import *
 from tqdm import tqdm
@@ -60,8 +61,8 @@ def get_plan_model_sequence():
     res_list = []
     for plan_file in ['train_plans.csv', 'test_plans.csv']:
         original_plan = get_original(plan_file)
-        original_plan = original_plan.set_index(['sid', 'plan_time'])
-
+        original_plan = original_plan.set_index(['sid'])
+        del original_plan['plan_time']
 
         model_seq = original_plan.plans.apply(lambda item: get_model(item))
 
@@ -74,7 +75,7 @@ def get_plan_model_sequence():
     return pd.concat(res_list)
 
 @file_cache()
-def get_plan_mini(plan_file='test_plans.csv', model=1):
+def get_plan_mini(model=1, plan_file='test_plans.csv', ):
     """
     split the jasn to 11 model group
     :param plan_file:
@@ -106,13 +107,11 @@ def get_plan_mini(plan_file='test_plans.csv', model=1):
         return pd.DataFrame()
     col_list = plan_items
 
-    mini_plan = original_plan.loc[:, ['sid', 'plan_time']]
+    mini_plan = original_plan.loc[:, ['sid']]
 
     mini_plan[col_list] = sigle_model[col_list]
 
-    mini_plan = mini_plan.set_index(['sid', 'plan_time'])
-
-    del mini_plan['transport_mode']
+    mini_plan = mini_plan.set_index(['sid'])
 
     mini_plan.columns = [[str(model)] * len(mini_plan.columns), mini_plan.columns]
     return mini_plan
@@ -153,51 +152,51 @@ def get_profile_click_percent(feature):
     profile = profile.fillna(0).reset_index()
     profile.day = profile.day+7
     return profile
+#
+# def get_plan_summary():
+#     plan = get_plan_original()
+#     res_list = []
+#     for item in ['distance']:
+#         col_list = [col for col in plan.columns if col[1] == item]
+#         summary = plan.loc[:, col_list].copy()
+#         # max_ = summary.where(summary > 0).max(axis=1)
+#         # max_.name=f'{item}_max'
+#         # res_list.append(max_)
+#         min_  = summary.where(summary > 0).min(axis=1)
+#
+#         min_ = pd.cut(min_,20).cat.codes
+#         min_.name = f'{item}_min_cat'
+#         res_list.append(min_)
+#     res = pd.concat(res_list, axis=1)
+#     res = res.sort_index(axis=1, level=1)
+#     return res
 
-def get_plan_summary():
-    plan = get_plan_original()
-    res_list = []
-    for item in ['distance']:
-        col_list = [col for col in plan.columns if col[1] == item]
-        summary = plan.loc[:, col_list].copy()
-        # max_ = summary.where(summary > 0).max(axis=1)
-        # max_.name=f'{item}_max'
-        # res_list.append(max_)
-        min_  = summary.where(summary > 0).min(axis=1)
-
-        min_ = pd.cut(min_,20).cat.codes
-        min_.name = f'{item}_min_cat'
-        res_list.append(min_)
-    res = pd.concat(res_list, axis=1)
-    res = res.sort_index(axis=1, level=1)
-    return res
-
-
-@timed()
-@file_cache()
-def get_plan_percentage_min():
-    """
-    Convert plan from amount/qty to percentage
-    :param plan:
-    :return:
-    """
-    plan = get_plan_original()
-    res_list = []
-    for item in plan_items:
-        col_list = [col for col in plan.columns if col[1] == item]
-        plan_percent = plan.loc[:, col_list].copy()
-        total = plan_percent.where(plan_percent > 0).min(axis=1)
-        for col in plan_percent:
-            plan_percent[(str(col[0]), f'{col[1]}_min_p')] = round(plan_percent[col] / total, 4)
-            del plan_percent[col]
-
-        res_list.append(plan_percent)
-    res = pd.concat(res_list, axis=1)
-
-    # res.columns.set_levels([ f'{item[1]}_p' for item in res.columns ],level=1,inplace=True)
-    # res.columns = [ (item[0], f'{item[1]}_p') for item in res.columns]
-    res = res.sort_index(axis=1, level=1)
-    return res
+#
+# @timed()
+# @file_cache()
+# def get_plan_percentage_min():
+#     """
+#     Convert plan from amount/qty to percentage
+#     :param plan:
+#     :return:
+#     """
+#     plan = get_plan_original()
+#     res_list = []
+#     for item in plan_items_mini :
+#         col_list = [col for col in plan.columns if col[1] == item]
+#         plan_percent = plan.loc[:, col_list].copy()
+#         total = plan_percent.where(plan_percent > 0).min(axis=1)
+#         for col in plan_percent:
+#             plan_percent[(str(col[0]), f'{col[1]}_min_p')] = round(plan_percent[col] / total, 4)
+#             del plan_percent[col]
+#
+#         res_list.append(plan_percent)
+#     res = pd.concat(res_list, axis=1)
+#
+#     # res.columns.set_levels([ f'{item[1]}_p' for item in res.columns ],level=1,inplace=True)
+#     # res.columns = [ (item[0], f'{item[1]}_p') for item in res.columns]
+#     res = res.sort_index(axis=1, level=1)
+#     return res
 
 
 @timed()
@@ -210,7 +209,7 @@ def get_plan_percentage():
     """
     plan = get_plan_original()
     res_list = []
-    for item in plan_items:
+    for item in plan_items_mini:
         col_list = [col for col in plan.columns if col[1] == item]
         plan_percent = plan.loc[:, col_list].copy()
         total = plan_percent.max(axis=1)
@@ -225,6 +224,61 @@ def get_plan_percentage():
     # res.columns = [ (item[0], f'{item[1]}_p') for item in res.columns]
     res = res.sort_index(axis=1, level=1)
     return res
+
+
+@file_cache()
+def get_plan_nlp():
+
+    N_COM = 10
+
+    from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+    from sklearn.pipeline import Pipeline
+    import nltk
+    from nltk.tokenize import sent_tokenize, word_tokenize
+    from nltk.corpus import stopwords
+    from nltk.stem import WordNetLemmatizer, PorterStemmer
+
+    # def tokenize(data):
+    #     tokenized_docs = [word_tokenize(doc) for doc in data]
+    #     alpha_tokens = [[t.lower() for t in doc if t.isalpha() == True] for doc in tokenized_docs]
+    #     lemmatizer = WordNetLemmatizer()
+    #     lem_tokens = [[lemmatizer.lemmatize(alpha) for alpha in doc] for doc in alpha_tokens]
+    #     X_stem_as_string = [" ".join(x_t) for x_t in lem_tokens]
+    #     return X_stem_as_string
+
+    # vct = CountVectorizer(stop_words='english', lowercase=False)
+    svd = TruncatedSVD(n_components=N_COM, random_state=2019)
+    tfvec = TfidfVectorizer(stop_words='english', ngram_range=(1, 2), max_features=8000, analyzer='char',
+                            lowercase=False)
+
+    plans = get_plan_original()
+    plans.columns = [item[1] if isinstance(item, tuple) else item for item in plans.columns]
+    plans = plans.reset_index()
+
+    res_list = []
+    for i in tqdm([#'distance', 'price', 'eta',
+                 'plans', ]):
+        x = plans[i].fillna(0)
+        if i != 'plans':
+            x = x.apply(lambda item: ','.join(item.astype(str)), axis=1).values
+        print(x[:5])
+        print(x.shape)
+        # x = tokenize(x)
+        print(len(x), x[:5])
+
+        x = tfvec.fit_transform(x)
+        x = svd.fit_transform(x)
+        svd_feas = pd.DataFrame(x, index=plans.sid)
+        svd_feas.columns = ['{}_svd_fea_{}'.format(i, j) for j in range(N_COM)]
+
+        res_list.append(svd_feas)
+
+        # feature = feature.merge(svd_feas, on='sid', how='left')
+    res = pd.concat(res_list, axis=1)
+    # print('====', res.columns)
+    # print(res.shape)
+    return res
+
 
 @timed()
 @file_cache()
@@ -246,28 +300,37 @@ def get_plans():
     seq = get_plan_model_sequence()
     plan[seq.columns] = seq[seq.columns]
 
-    # summay = get_plan_summary()
-    # plan[summay.columns] = summay[summay.columns]
+
+    # plan_nlp = get_plan_nlp()
+    # plan[plan_nlp.columns] = plan_nlp[plan_nlp.columns]
 
     plan.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plan.columns]
 
     return plan.reset_index()
 
+
+
 @timed()
-@lru_cache()
-# @file_cache(overwrite=True)
+#@lru_cache()
+@file_cache()
 def get_plan_original():
-    plan_list = []
-    for plan_file in ['train_plans.csv', 'test_plans.csv']:
-        base = get_plan_mini(plan_file, 1)
-        for i in tqdm(range(2, 12)):
-            tmp = get_plan_mini(plan_file, i)
-            columns = tmp.columns#[2:]
-            # print(columns)
-            base[columns] = tmp.loc[:, columns]
+    res_list = []
+    for file in ['train_plans.csv', 'test_plans.csv']:
+        base = get_original(file)
+        base = base.set_index(['sid'])
+        del base['plan_time']
+        from multiprocessing import Pool as ThreadPool  # 进程
+        from functools import partial
+        get_plan_mini_ex = partial(get_plan_mini, plan_file= file)
+
+        pool = ThreadPool(6)
+        plan_list = pool.map(get_plan_mini_ex, tqdm(range(1, 12)), chunksize=1)
         plan_list.append(base)
-    plan = pd.concat(plan_list)
-    return plan
+
+        plan_part = pd.concat(plan_list, axis=1)
+        res_list.append(plan_part)
+
+    return pd.concat(res_list, axis=0)
 
 
 @lru_cache()
@@ -315,24 +378,60 @@ def get_query():
     return train_query
 
 
-
+def get_geo_percentage(query):
+    pass
+    #return res
 
 
 def get_click():
     return get_original('train_clicks.csv')
 
 def get_profile():
-    profile = get_original('profiles.csv').astype(int)
-    # p_len = 66
-    # for i in range(p_len):
-    #     for j in range(i + 1, p_len):
-    #         new_p = profile[f'p{i}'] * profile[f'p{j}']
-    #         ratio = sum(new_p) / new_p.count()
-    #         if ratio > ratio_base:
-    #             logger.info(f'p{i:02}_p{j:02}:{sum(new_p)} , {ratio}')
-    #             profile[f'p{i:02}_p{j:02}'] = new_p
-    # logger.info(f'The shape of profile is:{profile.shape}')
-    return profile
+    profile_data = get_original('profiles.csv').astype(int)
+    # #profile_data = read_profile_data()
+    # x = profile_data.drop(['pid'], axis=1).values
+    # svd = TruncatedSVD(n_components=20, n_iter=20, random_state=2019)
+    # svd_x = svd.fit_transform(x)
+    # svd_feas = pd.DataFrame(svd_x)
+    # svd_feas.columns = ['svd_fea_{}'.format(i) for i in range(20)]
+    # svd_feas['pid'] = profile_data['pid'].values
+    #
+    # profile_data = pd.merge(profile_data,svd_feas, on='pid')
+
+    lda = get_profile_lda()
+
+    return pd.concat([profile_data,lda], axis=1)
+
+
+@file_cache()
+def get_profile_lda():
+    def get_profile_text():
+        profile = get_original('profiles.csv').astype(int)
+        profile = profile.set_index('pid')
+        col_list = profile.columns
+        for col in tqdm(col_list):
+            profile[col] = profile[col].map({0: ' ', 1: col})
+
+        res = profile.apply(lambda row: ' '.join(row), axis=1)
+        return res
+
+    from sklearn.feature_extraction.text import TfidfTransformer
+    from sklearn.feature_extraction.text import CountVectorizer
+    from sklearn.decomposition import LatentDirichletAllocation
+
+    profiles = get_profile_text()
+    vectorizer = CountVectorizer()
+    #transformer = TfidfTransformer()
+    cntTf = vectorizer.fit_transform(profiles)
+
+    n_topics = 5
+    lda = LatentDirichletAllocation(n_topics=n_topics,
+                                    learning_offset=50.,
+                                    random_state=666)
+    docres = lda.fit_transform(cntTf)
+    print(docres.shape)
+    return pd.DataFrame(docres, columns=[f'profile_lda_{i}' for i in range(n_topics)])
+
 
 def get_feature_partition(cut_begin=48, cut_end=60):
     feature = get_feature( )
@@ -347,34 +446,18 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 
 
 
-@timed()
-def resample_train(begin=54, end=60):
-    feature = get_feature()
-    feature = feature.loc[feature.click_mode>=-1]
-    gp = feature.click_mode.value_counts()
-    gp = gp.loc[gp.index>=0].sort_index()
-    base = gp.min()
-
-    ratio = get_feature_partition(cut_begin=begin, cut_end=end)
-    ratio = ratio.click_mode/ratio.click_mode.min()
-    sample_count = round(ratio*base).astype(int)
-
-    new_df = feature.loc[feature.click_mode==-1]
-
-    for i in tqdm(range(0, 12), 'resample base on ratio'):
-        cnt = sample_count.loc[i]
-        tmp_df = feature.loc[feature.click_mode == i].sample(cnt)
-        new_df = pd.concat([new_df, tmp_df])
-    logger.info(new_df.click_mode.value_counts().sort_index())
-    return new_df
-
 
 def get_train_test(drop_list=[]):
     feature = get_feature()  # .fillna(0)
 
     #feature = resample_train()
 
-    remove_list = ['o', 'd', 'label', 'req_time', 'click_time', 'date', 'day', 'plan_time','plan_time_', ]
+    for precision in hash_precision:
+        feature[f'o_d_hash_{precision}'] = feature[f'o_d_hash_{precision}'].astype('category').cat.codes
+        feature[f'd_hash_{precision}'] = feature[f'd_hash_{precision}'].astype('category').cat.codes
+        feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes
+
+    remove_list = ['plans', 'o', 'd', 'label', 'req_time', 'click_time', 'date', 'day', 'plan_time','plan_time_', ]
     feature = feature.drop(remove_list, axis=1, errors='ignore')
     feature = feature.drop(drop_list, axis=1, errors='ignore')
 
@@ -413,17 +496,13 @@ def get_feature(ratio_base=0.1, group=None, ):
     query = pd.merge(query, profile, how='left', on='pid')
 
     query = pd.merge(query, click, how='left', on='sid')
-    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0_ > 0), 'click_mode']  = 0
-    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0_), 'click_mode'] = 0 # -2
+    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0 > 0), 'click_mode']  = 0
+    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0), 'click_mode'] = 0 # -2
 
     query.click_mode = query.click_mode.fillna(-1)
     query.click_mode = query.click_mode.astype(int)
     query.pid        = query.pid.astype(int)
 
-    for precision in hash_precision:
-        query[f'o_d_hash_{precision}'] = query[f'o_d_hash_{precision}'].astype('category').cat.codes
-        query[f'd_hash_{precision}']   = query[f'd_hash_{precision}'].astype('category').cat.codes
-        query[f'o_hash_{precision}']   = query[f'o_hash_{precision}'].astype('category').cat.codes
     query = query.set_index('sid')
 
 
@@ -442,8 +521,7 @@ def get_feature(ratio_base=0.1, group=None, ):
 
 
 if __name__ == '__main__':
-
-
+    get_plan_original()
     get_feature()
     """
     nohup python -u  core/feature.py   > feature.log  2>&1 &

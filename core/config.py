@@ -1,5 +1,8 @@
 input_folder = './input/data_set_phase1'
+
 plan_items = ['distance', 'eta', 'price', 'transport_mode']
+
+plan_items_mini =  ['distance', 'eta', 'price']
 
 val_cut_point = 60-7
 
@@ -20,3 +23,5 @@ type_dict ={
 
  'click_mode':'str'
 }
+
+cate_cols = ['weekend', 'weekday' ]
