@@ -309,6 +309,23 @@ def get_plans():
     return plan.reset_index()
 
 
+@file_cache()
+def get_plan_cat():
+    plan_original = get_plan_original().copy()
+
+    last_col = plan_original.shape[1]
+    for col in tqdm(plan_original.columns):
+        #print(col)
+        if col[1] != 'transport_mode' and  col != 'plans' and len(plan_original[col].value_counts()) > 100:
+            plan_original['_'.join(col) + '_cat_code'] = pd.cut(plan_original[col], 100).cat.codes
+        elif col[1] == 'transport_mode' or  col == 'plans':
+            logger.info(('ignore', col))
+        else:
+            logger.info((f'\n{col}\n', plan_original[col].value_counts()))
+
+    return plan_original.iloc[:,last_col:].reset_index()
+
+
 
 @timed()
 #@lru_cache()
@@ -333,6 +350,7 @@ def get_plan_original():
     return pd.concat(res_list, axis=0)
 
 
+@timed()
 @lru_cache()
 def get_query():
     import geohash as geo
@@ -378,10 +396,25 @@ def get_query():
     return train_query
 
 
-def get_geo_percentage(query):
-    pass
-    #return res
+def get_geo_percentage(query, direct):
+    hash_precision = 6
+    res_list = []
+    for i in range(1, 12):
+        tmp = query.groupby([f'{direct}_hash_{hash_precision}'])[f'{i}_transport_mode'].agg({f'sugg_{direct}_{i}': 'sum'})
+        tmp[f'sugg_{direct}_{i}'] = tmp[f'sugg_{direct}_{i}'] // i
 
+        res_list.append(tmp.astype(int))
+
+    tmp = query.groupby([f'o_hash_{hash_precision}'])['day'].agg(
+        {f'day_appear_nunique_{direct}': 'nunique', f'count_appear_{direct}': 'count'})
+    res_list.append(tmp.astype(int))
+
+    tmp = pd.concat(res_list, axis=1)  # .sort_values('count_appear', ascending=False).loc['wx4g0w'].sort_index()
+
+    for i in range(1, 12):
+        tmp[f'sugg_{direct}_{i}_per'] = tmp[f'sugg_{direct}_{i}'] / tmp[f'count_appear_{direct}']
+    tmp.index.name = f'{direct}_hash_{hash_precision}'
+    return tmp.reset_index()
 
 def get_click():
     return get_original('train_clicks.csv')
@@ -453,9 +486,9 @@ def get_train_test(drop_list=[]):
     #feature = resample_train()
 
     for precision in hash_precision:
-        feature[f'o_d_hash_{precision}'] = feature[f'o_d_hash_{precision}'].astype('category').cat.codes
-        feature[f'd_hash_{precision}'] = feature[f'd_hash_{precision}'].astype('category').cat.codes
-        feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes
+        feature[f'o_d_hash_{precision}'] = feature[f'o_d_hash_{precision}'].astype('category').cat.codes.astype(int)
+        feature[f'd_hash_{precision}'] = feature[f'd_hash_{precision}'].astype('category').cat.codes.astype(int)
+        feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes.astype(int)
 
     remove_list = ['plans', 'o', 'd', 'label', 'req_time', 'click_time', 'date', 'day', 'plan_time','plan_time_', ]
     feature = feature.drop(remove_list, axis=1, errors='ignore')
@@ -481,6 +514,8 @@ def get_train_test(drop_list=[]):
 def get_feature(ratio_base=0.1, group=None, ):
     query = get_query()
     plans = get_plans()
+
+    #plan_cat = get_plan_cat()
     #plans.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plans.columns]
 
     click = get_click()
@@ -490,6 +525,13 @@ def get_feature(ratio_base=0.1, group=None, ):
 
 
     query = pd.merge(query, plans, how='left', on='sid')
+
+    for direct in ['o']:
+        geo_hash = get_geo_percentage(query, direct)
+        query = pd.merge(query, geo_hash, how='left', on=f'{direct}_hash_6')
+
+
+    #query = pd.merge(query, plan_cat, how='left', on='sid')
 
     #if group is not None and 'profile' in group:
     profile = get_profile()
@@ -504,17 +546,6 @@ def get_feature(ratio_base=0.1, group=None, ):
     query.pid        = query.pid.astype(int)
 
     query = query.set_index('sid')
-
-
-
-    # profile_per = get_profile_click_percent(query)
-    # query = pd.merge(query, profile_per, how='left', on=['pid','day'])
-    #
-    # #Make click_mode(label) is in the end
-    # click_mode = query.click_mode.copy()
-    # del query['click_mode']
-    # query['click_mode'] = click_mode
-
 
     return query.fillna(0)
 

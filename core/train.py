@@ -230,6 +230,8 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     folds = manual_split()
     split_fold = folds.split(X_data, None)
 
+    max_iteration = 0
+
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
         logger.info(f"fold n°{fold_}, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape}, test:{X_test.shape}, cat:{cate_cols} " )
         trn_data = lgb.Dataset(X_data.iloc[trn_idx], y_data.iloc[trn_idx], categorical_feature=cate_cols)
@@ -271,6 +273,8 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
                         verbose_eval=verbose_eval,
                         early_stopping_rounds=400)
 
+        max_iteration = max(max_iteration, clf.best_iteration)
+
         oof[val_idx] = clf.predict(X_data.iloc[val_idx], num_iteration=clf.best_iteration)
 
         score = f1_score(y_data.iloc[val_idx].values, oof[val_idx].argmax(axis=1), average='weighted')
@@ -304,7 +308,8 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     logger.info(f'cv:{cv}, the final local score:{score:6.4f}, predictions:{predictions.shape}, params:{params}')
     predictions = pd.DataFrame(predictions, index=X_test.index, columns=[str(i) for i in range(12)])
     predictions.index.name = 'sid'
-    return predictions, score, feature_importance_df, cv or clf.best_iteration
+    feature_importance_df = feature_importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
+    return predictions, score, feature_importance_df, max_iteration
 
 
 def plot_import(feature_importance):
@@ -352,7 +357,7 @@ def train_ex(args={}):
                 res, score, feature_importance, best_iteration = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
 
                 if len(args) == 0 :
-                    file = f'./output/res_{train_data.shape[1]}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                    file = f'./output/res_geo_{train_data.shape[1]}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
                     res.to_csv(file)
                     gen_sub(file)
                 else:
@@ -388,5 +393,6 @@ if __name__ == '__main__':
 """"
 nohup python -u  core/train.py train_ex > train_profile_lda.log 2>&1 &
 
+nohup python -u  core/train.py train_ex > train_geo_o.log 2>&1 &
 nohup python -u  core/train.py search > search.log  2>&1 &
 """
