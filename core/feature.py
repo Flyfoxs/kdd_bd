@@ -44,6 +44,7 @@ import json
 from  pandas import Series
 
 
+
 @file_cache()
 def get_plan_model_sequence():
     """
@@ -330,7 +331,7 @@ def get_plan_cat():
 @timed()
 #@lru_cache()
 @file_cache()
-def get_plan_original():
+def get_plan_original(wide=True):
     res_list = []
     for file in ['train_plans.csv', 'test_plans.csv']:
         base = get_original(file)
@@ -342,16 +343,23 @@ def get_plan_original():
 
         pool = ThreadPool(6)
         plan_list = pool.map(get_plan_mini_ex, tqdm(range(1, 12)), chunksize=1)
-        plan_list.append(base)
 
-        plan_part = pd.concat(plan_list, axis=1)
-        res_list.append(plan_part)
+        if wide:
+            plan_list.append(base)
+
+            plan_part = pd.concat(plan_list, axis=1)
+            res_list.append(plan_part)
+        else:
+            for df in tqdm(plan_list):
+                df.columns = df.columns.droplevel(0)
+                df = df.loc[df.transport_mode>0]
+                res_list.append(df)
 
     return pd.concat(res_list, axis=0)
 
 
-@timed()
-@lru_cache()
+
+@file_cache()
 def get_query():
     import geohash as geo
     train = get_original('train_queries.csv')
@@ -384,7 +392,7 @@ def get_query():
     train_query['d0'] = train_query.d.apply(lambda item: item.split(',')[0]).astype(float)
     train_query['d1'] = train_query.d.apply(lambda item: item.split(',')[1]).astype(float)
 
-    for precision in hash_precision:
+    for precision in [5,6]:
         train_query[f'o_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.o1, row.o0, precision=precision),
                                                                axis=1)
 
@@ -395,9 +403,29 @@ def get_query():
 
     return train_query
 
+def get_stati_feature(query):
+    def get_mode(ser):
+        return ser.value_counts().index[0]
 
-def get_geo_percentage(query, direct):
-    hash_precision = 6
+    def get_mode_count(ser):
+        return ser.value_counts().values[0]
+
+    query = get_query()
+    query = query.loc[:, ['pid', 'sid']]
+    plans = get_plan_original(wide=False).reset_index()
+
+    plans = pd.merge(plans, query, how='left', on='sid')
+
+    pid_mode =  plans.groupby('pid').transport_mode.agg(
+        ['median', 'std', 'nunique', 'count', get_mode, get_mode_count]).add_prefix('pid_s_m_')
+    pid_o_hash = plans.groupby('o_hash_6').transport_mode.agg(
+        ['median', 'std', 'nunique', 'count', get_mode, get_mode_count]).add_prefix('pid_s_m_')
+
+
+
+@timed()
+def get_geo_percentage(query, direct, precision):
+    hash_precision = precision
     res_list = []
     for i in range(1, 12):
         tmp = query.groupby([f'{direct}_hash_{hash_precision}'])[f'{i}_transport_mode'].agg({f'sugg_{direct}_{i}': 'sum'})
@@ -405,7 +433,7 @@ def get_geo_percentage(query, direct):
 
         res_list.append(tmp.astype(int))
 
-    tmp = query.groupby([f'o_hash_{hash_precision}'])['day'].agg(
+    tmp = query.groupby([f'{direct}_hash_{hash_precision}'])['day'].agg(
         {f'day_appear_nunique_{direct}': 'nunique', f'count_appear_{direct}': 'count'})
     res_list.append(tmp.astype(int))
 
@@ -483,14 +511,19 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 def get_train_test(drop_list=[]):
     feature = get_feature()  # .fillna(0)
 
+    #There 2 days only have zero mode
+    feature = feature[~feature.day.isin([8, 35])]
+
     #feature = resample_train()
 
-    for precision in hash_precision:
+    for precision in [6]:
         feature[f'o_d_hash_{precision}'] = feature[f'o_d_hash_{precision}'].astype('category').cat.codes.astype(int)
         feature[f'd_hash_{precision}'] = feature[f'd_hash_{precision}'].astype('category').cat.codes.astype(int)
         feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes.astype(int)
 
-    remove_list = ['plans', 'o', 'd', 'label', 'req_time', 'click_time', 'date', 'day', 'plan_time','plan_time_', ]
+    remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
+                   'o', 'd', 'label', 'req_time', 'click_time', 'date',
+                   'day', 'plan_time','plan_time_', ]
     feature = feature.drop(remove_list, axis=1, errors='ignore')
     feature = feature.drop(drop_list, axis=1, errors='ignore')
 
@@ -527,8 +560,9 @@ def get_feature(ratio_base=0.1, group=None, ):
     query = pd.merge(query, plans, how='left', on='sid')
 
     for direct in ['o']:
-        geo_hash = get_geo_percentage(query, direct)
-        query = pd.merge(query, geo_hash, how='left', on=f'{direct}_hash_6')
+        precision = 6
+        geo_hash = get_geo_percentage(query, direct, precision)
+        query = pd.merge(query, geo_hash, how='left', on=f'{direct}_hash_{precision}')
 
 
     #query = pd.merge(query, plan_cat, how='left', on='sid')

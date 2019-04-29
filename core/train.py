@@ -110,10 +110,11 @@ def gen_sub(file):
 #     print(f_score)
 
 class manual_split:
-    def split(self, X_data, cut_point):
+    def split(self, X_data, cut_point=54):
+        return self.split_sk(X_data)
         #return self.split_range( X_data, cut_point)
 
-        return self.split_group(X_data)
+        #return self.split_group(X_data)
 
 
     def split_range(self,X_data,  cut_point):
@@ -123,8 +124,9 @@ class manual_split:
         tmp = tmp.reset_index()
 
 
-        return [(tmp[(tmp.day>=cut_point-7*50) & (tmp.day<=cut_point-1) ].index,
+        res = [(tmp[(tmp.day>=0) & (tmp.day<=cut_point-1) ].index,
                  tmp[(tmp.day>=cut_point) & (tmp.day<=60) ].index)]
+        return tqdm(res, f'split_range:{cut_point}')
 
     def split_sk(self, X_data):
         feature = get_feature()
@@ -135,7 +137,7 @@ class manual_split:
         folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=666)
         split_fold = folds.split(feature.values, feature.click_mode.values)
 
-        return tqdm(split_fold)
+        return tqdm(split_fold, 'split_sk')
 
 
     def split_group(self,X_data,  begin_point=0):
@@ -154,7 +156,7 @@ class manual_split:
         for trn_inx, _ in tqdm((split_fold), 'Split group'):
 
             res.append((train.iloc[trn_inx].index, val.index))
-        return res
+        return tqdm(res, f'split_group:{begin_point},{len(val)}')
 
 
     def split_ratio(self,X_data,  cut_point):
@@ -228,7 +230,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     #     folds = manual_split()
     #     split_fold = folds.split(X_data, 60-6)
     folds = manual_split()
-    split_fold = folds.split(X_data, None)
+    split_fold = folds.split(X_data)
 
     max_iteration = 0
 
@@ -249,13 +251,10 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
 
             'learning_rate': 0.1,
             'bagging_fraction': 0.7,
-            # 'reg_alpha': 0.7,
-            # 'reg_lambda': 1,
 
             'objective': 'multiclass',
             'metric': 'None',
             'num_class': num_class,
-        # lightgbm.basic.LightGBMError: b'Number of classes should be specified and greater than 1 for multiclass training'
             # 'device':'gpu',
             #'gpu_platform_id': 1, 'gpu_device_id': 0
         }
@@ -296,7 +295,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
                             num_boost_round=clf.best_iteration,
                             valid_sets=[all_train],
                             feval=lgb_f1_score,
-                            verbose_eval=verbose_eval,
+                            verbose_eval=verbose_eval * 2,
                             )
             predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
             logger.info(f'CV is disable, will train with full train data with iter:{clf.best_iteration}')
@@ -353,17 +352,17 @@ def train_ex(args={}):
 
             X_data, y_data = train_data.iloc[:, :-1], train_data.iloc[:, -1]
 
-            for cv in [False,]:
+            for cv in [True,]:
                 res, score, feature_importance, best_iteration = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
 
-                if len(args) == 0 :
-                    file = f'./output/res_geo_{train_data.shape[1]}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                if len(args) == 0 or cv == True:
+                    file = f'./output/res_geo_{cv}_{train_data.shape[1]}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
                     res.to_csv(file)
                     gen_sub(file)
                 else:
                     logger.debug('Search model, do not save file')
 
-                feature_importance.to_hdf(f'./output/fi_drop_sn_{sn},_{train_data.shape[1]}_{cv}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
+                feature_importance.to_hdf(f'./output/fi_{cv}_{best_iteration}_{train_data.shape[1]}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
 
     res = { 'loss': -score, 'status': STATUS_OK, 'attachments': {"message": f'{args} ', } }
     logger.info(res)
@@ -394,5 +393,10 @@ if __name__ == '__main__':
 nohup python -u  core/train.py train_ex > train_profile_lda.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > train_geo_o.log 2>&1 &
-nohup python -u  core/train.py search > search.log  2>&1 &
+
+nohup python -u  core/train.py train_ex > train_geo_6_od.log 2>&1 &
+
+nohup python -u  core/train.py search > search_logloss.log  2>&1 &
+
+nohup python -u  core/train.py search > search_cv_sk.log  2>&1 &
 """
