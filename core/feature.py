@@ -403,25 +403,38 @@ def get_query():
 
     return train_query
 
-def get_stati_feature(query):
+@timed()
+def get_stati_feature():
     def get_mode(ser):
         return ser.value_counts().index[0]
 
     def get_mode_count(ser):
         return ser.value_counts().values[0]
 
+    res_list = []
+
     query = get_query()
-    query = query.loc[:, ['pid', 'sid']]
+    query_mini = query.loc[:, ['pid', 'sid']]
+
     plans = get_plan_original(wide=False).reset_index()
+    plans = pd.merge(plans, query_mini, how='left', on='sid')
 
-    plans = pd.merge(plans, query, how='left', on='sid')
+    pid_mode = plans.groupby('pid').transport_mode.agg(
+        ['median', 'std', 'nunique', 'count', get_mode, get_mode_count]).add_prefix('s_pid_m_')
+    res_list.append(pid_mode)
 
-    pid_mode =  plans.groupby('pid').transport_mode.agg(
-        ['median', 'std', 'nunique', 'count', get_mode, get_mode_count]).add_prefix('pid_s_m_')
-    pid_o_hash = plans.groupby('o_hash_6').transport_mode.agg(
-        ['median', 'std', 'nunique', 'count', get_mode, get_mode_count]).add_prefix('pid_s_m_')
+    query = get_query()
+    query.head()
 
+    for direction in ['o', 'd']:
+        query[f'{direction}_hash_6'] = query[f'{direction}_hash_6'].astype('category').cat.codes
 
+        geohash_st = query.groupby('pid')[f'{direction}_hash_6'].agg(
+            ['std', 'nunique', 'count', get_mode, get_mode_count]).add_prefix(f's_pid_{direction}_hash_')
+        geohash_st[f's_pid_{direction}_hash_m_per'] = geohash_st[f's_pid_{direction}_hash_get_mode_count'] / geohash_st[
+            f's_pid_{direction}_hash_count']
+        res_list.append(geohash_st)
+    return pd.concat(res_list, axis=1).reset_index()
 
 @timed()
 def get_geo_percentage(query, direct, precision):
@@ -570,6 +583,10 @@ def get_feature(ratio_base=0.1, group=None, ):
     #if group is not None and 'profile' in group:
     profile = get_profile()
     query = pd.merge(query, profile, how='left', on='pid')
+
+    #statistics, information
+    stat = get_stati_feature()
+    query = pd.merge(query, stat, how='left', on='pid')
 
     query = pd.merge(query, click, how='left', on='sid')
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0 > 0), 'click_mode']  = 0

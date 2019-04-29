@@ -394,7 +394,7 @@ nohup python -u  core/train.py train_ex > train_profile_lda.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > train_geo_o.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > train_geo_6_od.log 2>&1 &
+nohup python -u  core/train.py train_ex > train_statistics.log 2>&1 &
 
 nohup python -u  core/train.py search > search_logloss.log  2>&1 &
 
