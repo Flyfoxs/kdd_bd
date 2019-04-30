@@ -233,6 +233,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     split_fold = folds.split(X_data)
 
     max_iteration = 0
+    min_iteration = 99999
 
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
         logger.info(f"fold n°{fold_}, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape}, test:{X_test.shape}, cat:{cate_cols} " )
@@ -273,6 +274,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
                         early_stopping_rounds=400)
 
         max_iteration = max(max_iteration, clf.best_iteration)
+        min_iteration = min(min_iteration, clf.best_iteration)
 
         oof[val_idx] = clf.predict(X_data.iloc[val_idx], num_iteration=clf.best_iteration)
 
@@ -308,7 +310,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     predictions = pd.DataFrame(predictions, index=X_test.index, columns=[str(i) for i in range(12)])
     predictions.index.name = 'sid'
     feature_importance_df = feature_importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
-    return predictions, score, feature_importance_df, max_iteration
+    return predictions, score, feature_importance_df, f'{min_iteration}_{max_iteration}'
 
 
 def plot_import(feature_importance):
@@ -372,7 +374,7 @@ def train_ex(args={}):
 def search():
     trials = Trials()
     space = get_search_space()
-    best = fmin(train_ex, space, algo=tpe.suggest, max_evals=30, trials=trials)
+    best = fmin(train_ex, space, algo=tpe.suggest, max_evals=15, trials=trials)
 
     logger.debug(f"Best: {best}")
     att_message = [trials.trial_attachments(trial)['message'] for trial in trials.trials]
@@ -394,7 +396,7 @@ nohup python -u  core/train.py train_ex > train_profile_lda.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > train_geo_o.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > train_statistics.log 2>&1 &
+nohup python -u  core/train.py train_ex > train_statistics_2.log 2>&1 &
 
 nohup python -u  core/train.py search > search_logloss.log  2>&1 &
 

@@ -431,8 +431,6 @@ def get_stati_feature():
 
         geohash_st = query.groupby('pid')[f'{direction}_hash_6'].agg(
             ['std', 'nunique', 'count', get_mode, get_mode_count]).add_prefix(f's_pid_{direction}_hash_')
-        geohash_st[f's_pid_{direction}_hash_m_per'] = geohash_st[f's_pid_{direction}_hash_get_mode_count'] / geohash_st[
-            f's_pid_{direction}_hash_count']
         res_list.append(geohash_st)
     return pd.concat(res_list, axis=1).reset_index()
 
@@ -534,11 +532,20 @@ def get_train_test(drop_list=[]):
         feature[f'd_hash_{precision}'] = feature[f'd_hash_{precision}'].astype('category').cat.codes.astype(int)
         feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes.astype(int)
 
+
+
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
-                   'day', 'plan_time','plan_time_', ]
+                   'day', 'plan_time','plan_time_',
+                   #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
+                     ]
+
+    remove_list.extend(drop_list)
+    remove_list.extend([col for col in feature.columns if 's_' in col])
+    remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
+
     feature = feature.drop(remove_list, axis=1, errors='ignore')
-    feature = feature.drop(drop_list, axis=1, errors='ignore')
+    #feature = feature.drop(drop_list, axis=1, errors='ignore')
 
     logger.info((feature.shape, list(feature.columns)))
 
@@ -546,7 +553,7 @@ def get_train_test(drop_list=[]):
         if type_ not in ['int64', 'int16', 'int32', 'float64']:
             logger.error(col, type_)
 
-    feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+    #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
 
     train_data = feature.loc[(feature.click_mode >= 0)]
 
