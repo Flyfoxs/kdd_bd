@@ -517,11 +517,60 @@ def get_feature_partition(cut_begin=48, cut_end=60):
     return sample
 
 
+#
+# def get_train_test_zero():
+#     feature = get_feature()  # .fillna(0)
+#     logger.info(f'Remove simple zero case:{len(feature.loc[feature.o_seq_0 == 0])}')
+#     feature = feature.loc[feature.o_seq_0 > 0]
+#
+#     def convert(val):
+#         if val >= 1:
+#             return 0
+#         elif val == 0:
+#             return 1
+#         elif val == -1:
+#             return -1
+#         else:
+#             return None
+#
+#     feature.click_mode = feature.click_mode.apply(lambda item: convert(item))
+#
+#     for precision in [6]:
+#         feature[f'o_d_hash_{precision}'] = feature[f'o_d_hash_{precision}'].astype('category').cat.codes.astype(int)
+#         feature[f'd_hash_{precision}'] = feature[f'd_hash_{precision}'].astype('category').cat.codes.astype(int)
+#         feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes.astype(int)
+#
+#     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
+#                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
+#                    'day', 'plan_time','plan_time_',
+#                    #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
+#                      ]
+#
+#     remove_list.extend([col for col in feature.columns if 's_' in col])
+#     remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
+#
+#     feature = feature.drop(remove_list, axis=1, errors='ignore')
+#
+#     logger.info((feature.shape, list(feature.columns)))
+#
+#     for col, type_ in feature.dtypes.sort_values().iteritems():
+#         if type_ not in ['int64', 'int16', 'int32', 'float64']:
+#             logger.error(col, type_)
+#
+#     #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
+#
+#     train_data = feature.loc[(feature.click_mode >= 0)]
+#
+#     X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
+#
+#     return train_data, X_test
+#
 
 
 def get_train_test(drop_list=[]):
     feature = get_feature()  # .fillna(0)
-
+    # logger.info(f'Remove simple zero case:{len(feature.loc[feature.o_seq_0 == 0])}')
+    # feature = feature.loc[feature.o_seq_0 > 0]
     #There 2 days only have zero mode
     feature = feature[~feature.day.isin([8, 35])]
 
@@ -542,7 +591,7 @@ def get_train_test(drop_list=[]):
 
     remove_list.extend(drop_list)
     remove_list.extend([col for col in feature.columns if 's_' in col])
-    remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
+    #remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
 
     feature = feature.drop(remove_list, axis=1, errors='ignore')
     #feature = feature.drop(drop_list, axis=1, errors='ignore')

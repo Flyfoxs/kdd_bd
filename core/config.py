@@ -24,4 +24,4 @@ type_dict ={
  'click_mode':'str'
 }
 
-cate_cols = ['weekend', 'weekday' ]
+cate_cols = ['weekend', 'weekday'  ]
