@@ -610,7 +610,7 @@ def get_train_test(drop_list=[]):
     # logger.info(f'Remove simple zero case:{len(feature.loc[feature.o_seq_0 == 0])}')
     # feature = feature.loc[feature.o_seq_0 > 0]
     #There 2 days only have zero mode
-    feature = feature[~feature.day.isin([8, 35])]
+    #feature = feature[~feature.day.isin([8, 35])]
 
     #feature = resample_train()
 
@@ -701,7 +701,7 @@ def get_feature(ratio_base=0.1, group=None, ):
     query.pid        = query.pid.astype(int)
     logger.info('Finish merge click feature')
 
-    query = query.set_index('sid')
+    query = query.set_index('sid').sort_index()
     logger.info('Finish set index')
     query = query.fillna(0)
     logger.info('Finish fillna')

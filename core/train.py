@@ -193,7 +193,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     feature_importance_df = feature_importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
     if cv:
         oof = pd.DataFrame(oof, index=X_data.index, columns=[str(i) for i in range(12)])
-        save_stack_feature(oof, predictions, f'./output/stacking/L_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
+        save_stack_feature(oof, predictions, f'./output/stacking/L_{"_".join(map(str, X_data.shape))}_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
     return predictions, score, feature_importance_df, f'{min_iteration}_{max_iteration}'
 
 def save_stack_feature(train:pd.DataFrame, test:pd.DataFrame, file_path):
@@ -279,6 +279,21 @@ def search():
         logger.debug(f'score:{"%9.6f"%score}, para:{para}, misc:{misc}')
 
 
+def adjust_res(adj, p):
+    p = [round(item, 3) for item in p]
+    adj_tmp = adj.copy()
+
+    adj_tmp.loc[adj['3'] > p[0], '3'] = 100
+    adj_tmp.loc[adj['6'] > p[1], '6'] = 99
+    adj_tmp.loc[adj['4'] > p[2], '4'] = 98
+    adj_tmp.loc[adj['8'] > p[3], '8'] = 97
+    adj_tmp.loc[adj['0'] > p[4], '0'] = 96
+
+    adj_tmp['recommend_mode'] = adj_tmp.iloc[:, :12].idxmax(axis=1)
+
+    return adj_tmp
+
+
 if __name__ == '__main__':
     fire.Fire()
     # train_ex()
@@ -300,6 +315,10 @@ nohup python -u  core/train.py train_ex > train_price_eta.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > train_price_eta_with_zero.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > remove_d_hash.log 2>&1 &
+nohup python -u  core/train.py train_ex > 2019.log 2>&1 &
+
+nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
+
+#nohup python -u  core/train.py train_ex > 2019_base_0.69366536.log 2>&1 &
 
 """

@@ -28,7 +28,7 @@ class manual_split:
 
         feature = feature.reset_index()
 
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=666)
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
         split_fold = folds.split(feature.values, feature.click_mode.values)
 
         return tqdm(split_fold, 'split_sk')
@@ -43,7 +43,7 @@ class manual_split:
         train = feature.loc[(feature.day >= begin_point) & (feature.day < 54)]
 
 
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=666)
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
         split_fold = folds.split(train.values, train.click_mode.values)
 
         res = []
