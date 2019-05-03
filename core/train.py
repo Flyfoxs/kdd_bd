@@ -56,12 +56,11 @@ def gen_sub(file):
     res = res.set_index('sid')
     res['recommend_mode'] = res.idxmax(axis=1)
 
-    vali_sub(res)
-
     zero_sid = get_feature()
-    zero_sid = zero_sid[zero_sid.feature.o_seq_0 == 0].index
+    zero_sid = zero_sid[(zero_sid.o_seq_0 == 0) & (zero_sid.click_mode == -1)].index.values
     res.loc[zero_sid,'recommend_mode'] = 0
 
+    vali_sub(res)
 
     import csv
     sub_file = file.replace('res', 'sub/sub')
@@ -116,7 +115,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     min_iteration = 99999
 
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
-        logger.info(f"fold n°{fold_}, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape}, test:{X_test.shape}, cat:{cate_cols} " )
+        logger.info(f"fold n°{fold_} BEGIN, cv:{cv},train:{trn_idx.shape}, val:{val_idx.shape}, test:{X_test.shape}, cat:{cate_cols} " )
         trn_data = lgb.Dataset(X_data.iloc[trn_idx], y_data.iloc[trn_idx], categorical_feature=cate_cols)
         val_data = lgb.Dataset(X_data.iloc[val_idx], y_data.iloc[val_idx], categorical_feature=cate_cols, reference=trn_data)
 
@@ -162,7 +161,7 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
         get_weighted_fscore(y_data.iloc[val_idx].values, oof[val_idx].argmax(axis=1), dic_)
         score = f1_score(y_data.iloc[val_idx].values, oof[val_idx].argmax(axis=1), average='weighted')
 
-        logger.info(f'fold n{fold_}, cv:{cv}, local score:{score:6.4f},best_iter:{clf.best_iteration}, val shape:{X_data.iloc[val_idx].shape}')
+        logger.info(f'fold n{fold_} END, cv:{cv}, local_score:{score:6.4f},best_iter:{clf.best_iteration}, val shape:{X_data.iloc[val_idx].shape}')
 
         fold_importance_df = pd.DataFrame()
         fold_importance_df["feature"] = X_data.columns
@@ -188,11 +187,21 @@ def train_lgb(X_data, y_data, X_test, cv=False, args={}):
     if cv:
         score = f1_score(y_data.values, oof.argmax(axis=1), average='weighted')
 
-    logger.info(f'cv:{cv}, the final local score:{score:6.4f}, predictions:{predictions.shape}, params:{params}')
+    logger.info(f'cv:{cv}, the final local_score:{score:6.4f}, predictions:{predictions.shape}, params:{params}')
     predictions = pd.DataFrame(predictions, index=X_test.index, columns=[str(i) for i in range(12)])
     predictions.index.name = 'sid'
     feature_importance_df = feature_importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
+    if cv:
+        oof = pd.DataFrame(oof, index=X_data.index, columns=[str(i) for i in range(12)])
+        save_stack_feature(oof, predictions, f'./output/stacking/L_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
     return predictions, score, feature_importance_df, f'{min_iteration}_{max_iteration}'
+
+def save_stack_feature(train:pd.DataFrame, test:pd.DataFrame, file_path):
+    train_label = train.copy()
+    feature = get_feature()
+    train_label['click_mode'] = feature.loc[train_label.index.values, 'click_mode']
+    train_label.to_hdf(file_path,'train',mode='a')
+    test.to_hdf(file_path, 'test', mode='a')
 
 
 def plot_import(feature_importance):
@@ -228,7 +237,10 @@ def train_ex(args={}):
 
     for sn, drop_list in enumerate([
         #['date', 'day'],
+
+        #['d_hash_6'],
         ['date'],
+        [],
     ]):
 
         for ratio in range(1):
@@ -240,13 +252,13 @@ def train_ex(args={}):
                 res, score, feature_importance, best_iteration = train_lgb(X_data, y_data, X_test, cv=cv, args=args)
 
                 if len(args) == 0 or cv == True:
-                    file = f'./output/res_geo_{cv}_{train_data.shape[1]}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                    file = f'./output/res_geo_{cv}_{"_".join(map(str, train_data.shape))}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
                     res.to_csv(file)
                     gen_sub(file)
                 else:
                     logger.debug('Search model, do not save file')
 
-                feature_importance.to_hdf(f'./output/fi_{cv}_{best_iteration}_{train_data.shape[1]}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
+                feature_importance.to_hdf(f'./output/fi_{cv}_{best_iteration}_{"_".join(map(str, train_data.shape))}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
 
     res = { 'loss': -score, 'status': STATUS_OK, 'attachments': {"message": f'{args} ', } }
     logger.info(res)
@@ -284,5 +296,10 @@ nohup python -u  core/train.py search > search_logloss.log  2>&1 &
 
 nohup python -u  core/train.py search > search_cv_sk.log  2>&1 &
 
-nohup python -u  core/train.py train_ex > train_cat_pid.log 2>&1 &
+nohup python -u  core/train.py train_ex > train_price_eta.log 2>&1 &
+
+nohup python -u  core/train.py train_ex > train_price_eta_with_zero.log 2>&1 &
+
+nohup python -u  core/train.py train_ex > remove_d_hash.log 2>&1 &
+
 """

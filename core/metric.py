@@ -6,11 +6,14 @@ from file_cache.utils.util_log import *
 def get_weighted_fscore(y_pred, y_true, dic_):
     f_score = 0
     for i in range(12):
-        yt = y_true == i
-        yp = y_pred == i
-        tmp_score = f1_score(y_true=yt, y_pred= yp)
-        f_score += dic_[i] * tmp_score
-        logger.info(f'{i:02},{dic_[i]:0.4f},{dic_[i]*tmp_score:0.4f},{tmp_score:0.4f}')
+        if i in dic_:
+            yt = y_true == i
+            yp = y_pred == i
+            tmp_score = f1_score(y_true=yt, y_pred= yp)
+            f_score += dic_[i] * tmp_score
+            logger.info(f'{i:02},{dic_[i]:0.4f},{tmp_score:0.4f},{dic_[i]*tmp_score:0.4f}')
+        else:
+            logger.warning(f'Mode#{i} is zero')
     logger.info(f_score)
     return f_score
 

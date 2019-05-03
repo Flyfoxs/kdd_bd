@@ -4,9 +4,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold, StratifiedKFold, GroupKFold
 
 class manual_split:
-    def split(self, X_data, cut_point=54):
+    def split(self, X_data, cut_point=47):
         return self.split_sk(X_data)
-        #return self.split_range( X_data, cut_point)
+        #return self.split_range( X_data, cut_point) #cut_point#54, train:(445340,), val:(54660,)
 
         #return self.split_group(X_data)
 

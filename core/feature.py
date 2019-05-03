@@ -15,6 +15,7 @@ from functools import lru_cache
 
 from glob import glob
 import json
+from math import radians, atan, tan, sin, acos, cos
 
 
 # #from core.submit import *
@@ -114,6 +115,16 @@ def get_plan_mini(model=1, plan_file='test_plans.csv', ):
 
     mini_plan = mini_plan.set_index(['sid'])
 
+    mini_plan['pe_eta_price'] = mini_plan['eta']/mini_plan['price']
+    mini_plan['pe_dis_price'] = mini_plan['distance']/mini_plan['price']
+    mini_plan['pe_dis_eta']   = mini_plan['distance']/mini_plan['eta']
+
+    mini_plan['pe_price_eta'] = mini_plan['price']/mini_plan['eta']
+    mini_plan['pe_price_dis'] = mini_plan['price']/mini_plan['distance']
+    mini_plan['pe_eta_dis']   = mini_plan['eta']/mini_plan['distance']
+
+    #mini_plan['transport_mode'] = mini_plan['transport_mode']//model
+
     mini_plan.columns = [[str(model)] * len(mini_plan.columns), mini_plan.columns]
     return mini_plan
 
@@ -208,7 +219,7 @@ def get_plan_percentage():
     :param plan:
     :return:
     """
-    plan = get_plan_original()
+    plan = get_plan_original_wide()
     res_list = []
     for item in plan_items_mini:
         col_list = [col for col in plan.columns if col[1] == item]
@@ -252,7 +263,7 @@ def get_plan_nlp():
     tfvec = TfidfVectorizer(stop_words='english', ngram_range=(1, 2), max_features=8000, analyzer='char',
                             lowercase=False)
 
-    plans = get_plan_original()
+    plans = get_plan_original_wide()
     plans.columns = [item[1] if isinstance(item, tuple) else item for item in plans.columns]
     plans = plans.reset_index()
 
@@ -288,22 +299,16 @@ def get_plans():
     3, 5, 6 price is 0
     :return:
     """
-    plan = get_plan_original()
-    #res.plan_time = pd.to_datetime(res.plan_time)
+    plan = get_plan_original_wide()
 
     plan_pg = get_plan_percentage()
-    plan[plan_pg.columns] = plan_pg[plan_pg.columns]
-
-    # plan_pg = get_plan_percentage_min()
-    # plan[plan_pg.columns] = plan_pg[plan_pg.columns]
-    #
 
     seq = get_plan_model_sequence()
-    plan[seq.columns] = seq[seq.columns]
 
+    plan_stati = get_plan_stati_feature_sid()
 
-    # plan_nlp = get_plan_nlp()
-    # plan[plan_nlp.columns] = plan_nlp[plan_nlp.columns]
+    #todo plan_stati
+    plan = pd.concat([plan, plan_pg, seq, plan_stati], axis=1)
 
     plan.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plan.columns]
 
@@ -312,7 +317,7 @@ def get_plans():
 
 @file_cache()
 def get_plan_cat():
-    plan_original = get_plan_original().copy()
+    plan_original = get_plan_original_wide()#.copy()
 
     last_col = plan_original.shape[1]
     for col in tqdm(plan_original.columns):
@@ -326,12 +331,24 @@ def get_plan_cat():
 
     return plan_original.iloc[:,last_col:].reset_index()
 
+@file_cache()
+def get_plan_original_deep():
+    plan_list = []
+    for plan_file in ['train_plans.csv', 'test_plans.csv']:
+        original_plan = get_original(plan_file)
+        for sn, row in tqdm(original_plan.iterrows(), f'convert {plan_file}'):
+            plans = json.loads(row.plans)
+            for single_plan in plans:
+                single_plan['sid'] = row.sid
+                plan_list.append(single_plan)
+    res = pd.DataFrame(plan_list)
+    return res.fillna('0').replace({'':'0'}).astype(int)
 
 
 @timed()
 #@lru_cache()
 @file_cache()
-def get_plan_original(wide=True):
+def get_plan_original_wide():
     res_list = []
     for file in ['train_plans.csv', 'test_plans.csv']:
         base = get_original(file)
@@ -344,16 +361,16 @@ def get_plan_original(wide=True):
         pool = ThreadPool(6)
         plan_list = pool.map(get_plan_mini_ex, tqdm(range(1, 12)), chunksize=1)
 
-        if wide:
-            plan_list.append(base)
+        # if wide:
+        plan_list.append(base)
 
-            plan_part = pd.concat(plan_list, axis=1)
-            res_list.append(plan_part)
-        else:
-            for df in tqdm(plan_list):
-                df.columns = df.columns.droplevel(0)
-                df = df.loc[df.transport_mode>0]
-                res_list.append(df)
+        plan_part = pd.concat(plan_list, axis=1)
+        res_list.append(plan_part)
+        # else:
+        #     for df in tqdm(plan_list):
+        #         df.columns = df.columns.droplevel(0)
+        #         df = df.loc[df.transport_mode>0]
+        #         res_list.append(df)
 
     return pd.concat(res_list, axis=0)
 
@@ -404,7 +421,23 @@ def get_query():
     return train_query
 
 @timed()
-def get_stati_feature():
+def get_plan_stati_feature_sid():
+    res_list = []
+
+    plans = get_plan_original_deep()
+
+    for col in plan_items_mini:
+        tmp = plans.groupby('sid')[col].agg(['min', 'max', 'mean', 'std']).add_prefix(f'ps_{col}_')
+        res_list.append(tmp)
+
+    tmp = plans.groupby('sid')['transport_mode'].agg(['count','nunique']).add_prefix(f'ps_transport_mode_')
+    tmp['ps_transport_mode_nunique'] = tmp['ps_transport_mode_count'] - tmp['ps_transport_mode_nunique']
+    res_list.append(tmp)
+    return pd.concat(res_list, axis=1)
+
+
+@timed()
+def get_stati_feature_pid():
     def get_mode(ser):
         return ser.value_counts().index[0]
 
@@ -416,7 +449,7 @@ def get_stati_feature():
     query = get_query()
     query_mini = query.loc[:, ['pid', 'sid']]
 
-    plans = get_plan_original(wide=False).reset_index()
+    plans = get_plan_original_deep()
     plans = pd.merge(plans, query_mini, how='left', on='sid')
 
     pid_mode = plans.groupby('pid').transport_mode.agg(
@@ -568,6 +601,11 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 
 
 def get_train_test(drop_list=[]):
+    """
+    train:500000, online:94358
+    :param drop_list:
+    :return:
+    """
     feature = get_feature()  # .fillna(0)
     # logger.info(f'Remove simple zero case:{len(feature.loc[feature.o_seq_0 == 0])}')
     # feature = feature.loc[feature.o_seq_0 > 0]
@@ -582,21 +620,26 @@ def get_train_test(drop_list=[]):
         feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes.astype(int)
 
 
-
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
-                   'day', 'plan_time','plan_time_',
+                   'day', 'plan_time',
+
                    #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
                      ]
 
     remove_list.extend(drop_list)
-    remove_list.extend([col for col in feature.columns if 's_' in col])
+    remove_list.extend([col for col in feature.columns if col.startswith('s_')])
+
+    #pe_eta_price and so on
+    remove_list.extend([col for col in feature.columns if '_pe_' in col])
+
+    remove_list.extend([col for col in feature.columns if 'ps_' in col])
+
     #remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
 
     feature = feature.drop(remove_list, axis=1, errors='ignore')
     #feature = feature.drop(drop_list, axis=1, errors='ignore')
 
-    logger.info((feature.shape, list(feature.columns)))
 
     for col, type_ in feature.dtypes.sort_values().iteritems():
         if type_ not in ['int64', 'int16', 'int32', 'float64']:
@@ -607,6 +650,8 @@ def get_train_test(drop_list=[]):
     train_data = feature.loc[(feature.click_mode >= 0)]
 
     X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
+
+    logger.info((train_data.shape, list(train_data.columns)))
 
     return train_data, X_test
 
@@ -633,6 +678,8 @@ def get_feature(ratio_base=0.1, group=None, ):
         geo_hash = get_geo_percentage(query, direct, precision)
         query = pd.merge(query, geo_hash, how='left', on=f'{direct}_hash_{precision}')
 
+    # for i in range(1, 12):
+    #     query[f'{i}_distance_ratio'] = query[f'{i}_distance']/query['raw_dis']
 
     #query = pd.merge(query, plan_cat, how='left', on='sid')
 
@@ -641,8 +688,9 @@ def get_feature(ratio_base=0.1, group=None, ):
     query = pd.merge(query, profile, how='left', on='pid')
 
     #statistics, information
-    stat = get_stati_feature()
+    stat = get_stati_feature_pid()
     query = pd.merge(query, stat, how='left', on='pid')
+    logger.info('Finish merge stat feature')
 
     query = pd.merge(query, click, how='left', on='sid')
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0 > 0), 'click_mode']  = 0
@@ -651,15 +699,18 @@ def get_feature(ratio_base=0.1, group=None, ):
     query.click_mode = query.click_mode.fillna(-1)
     query.click_mode = query.click_mode.astype(int)
     query.pid        = query.pid.astype(int)
+    logger.info('Finish merge click feature')
 
     query = query.set_index('sid')
-
-    return query.fillna(0)
-
+    logger.info('Finish set index')
+    query = query.fillna(0)
+    logger.info('Finish fillna')
+    return query
 
 
 if __name__ == '__main__':
-    get_plan_original()
+    get_plan_original_deep()
+    get_plan_original_wide()
     get_feature()
     """
     nohup python -u  core/feature.py   > feature.log  2>&1 &
