@@ -4,6 +4,8 @@ plan_items = ['distance', 'eta', 'price', 'transport_mode']
 
 plan_items_mini =  ['distance', 'eta', 'price']
 
+enhance_model = [0, 3, 4, 6, 9 ]
+
 val_cut_point = 60-7
 
 hash_precision = [6]

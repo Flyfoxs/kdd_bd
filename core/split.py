@@ -31,8 +31,7 @@ class manual_split:
         folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
         split_fold = folds.split(feature.values, feature.click_mode.values)
 
-        return tqdm(split_fold, 'split_sk')
-
+        return split_fold
 
     def split_group(self,X_data,  begin_point=0):
         feature = get_feature()
@@ -104,3 +103,24 @@ class manual_split:
             new_df = pd.concat([new_df, tmp_df])
         logger.info(new_df.click_mode.value_counts().sort_index())
         return new_df
+
+
+@file_cache()
+def get_split_sid(split_id):
+    train = get_original('train_queries.csv')
+    click = get_original('train_clicks.csv')
+
+    train = pd.merge(train,click, how='left', on='sid')
+    train.click_mode = train.click_mode.fillna('0').astype(int)
+    train = train.sort_values('sid')
+    folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
+    split_fold = folds.split(train.values, train.click_mode.values)
+
+    for sn, (trn_idx, val_idx) in enumerate(split_fold):
+        if sn == split_id:
+            return train.iloc[trn_idx].sid, train.iloc[val_idx].sid
+
+
+if __name__ == '__main__' :
+    for i in range(5):
+        get_split_sid(i)

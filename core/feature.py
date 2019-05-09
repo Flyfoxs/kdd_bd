@@ -17,6 +17,8 @@ from glob import glob
 import json
 from math import radians, atan, tan, sin, acos, cos
 
+import warnings
+warnings.filterwarnings("ignore")
 
 # #from core.submit import *
 # from core.check import *
@@ -134,36 +136,39 @@ def get_original(file):
     return pd.read_csv(f'{input_folder}/{file}', dtype=type_dict)
 
 
-def get_profile_click_percent(feature):
-    col = sorted([item for item in feature.columns if item.endswith('transport_mode')])
-    df_col = col.copy()
-    df_col.extend(['click_mode', 'pid','day'])
-    # Click
-    logger.info(f'Only base on day from 0 to {val_cut_point} to cal click percentage')
-    click = feature.loc[:, df_col].copy()
-    for sn, cur_col in enumerate(tqdm(col, 'Click sum') ):
-        #print(cur_col)
-        click[cur_col] = click.apply(lambda item: 1 if item[cur_col] > 0 and item[cur_col] == item['click_mode'] else 0,
-                                     axis=1)
+#
+# def get_convert_profile_click_percent(feature):
+#     col = sorted([item for item in feature.columns if item.endswith('transport_mode')])
+#     df_col = col.copy()
+#     df_col.extend(['click_mode', 'pid','day'])
+#     # Click
+#     logger.info(f'Only base on day from 0 to {val_cut_point} to cal click percentage')
+#     click = feature.loc[:, df_col].copy()
+#     for sn, cur_col in enumerate(tqdm(col, 'Click sum') ):
+#         #print(cur_col)
+#         click[cur_col] = click.apply(lambda item: 1 if item[cur_col] > 0 and item[cur_col] == item['click_mode'] else 0,
+#                                      axis=1)
+#
+#     # Ignore
+#     ignore = feature.loc[:, df_col].copy()
+#     for sn, cur_col in  enumerate(tqdm(col, 'Ignore sum') ):
+#         #print('ignore', cur_col)
+#         ignore[cur_col] = ignore.apply(
+#             lambda item: 1 if item[cur_col] > 0 and item[cur_col] != item['click_mode'] else 0, axis=1)
+#
+#     profile = pd.DataFrame()
+#     for sn, cur_col in enumerate(tqdm(col, 'Cal percentage') ):
+#         print(cur_col)
+#         click_total = click.groupby(['pid','day'])[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
+#         ignore_total = ignore.groupby(['pid','day'])[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
+#         percent = click_total / (click_total + ignore_total)
+#         # print(type(percent))
+#         profile = pd.concat([profile, percent], axis=1)  # .fillna(0)
+#     profile = profile.fillna(0).reset_index()
+#     profile.day = profile.day+7
+#     return profile
 
-    # Ignore
-    ignore = feature.loc[:, df_col].copy()
-    for sn, cur_col in  enumerate(tqdm(col, 'Ignore sum') ):
-        #print('ignore', cur_col)
-        ignore[cur_col] = ignore.apply(
-            lambda item: 1 if item[cur_col] > 0 and item[cur_col] != item['click_mode'] else 0, axis=1)
 
-    profile = pd.DataFrame()
-    for sn, cur_col in enumerate(tqdm(col, 'Cal percentage') ):
-        print(cur_col)
-        click_total = click.groupby(['pid','day'])[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
-        ignore_total = ignore.groupby(['pid','day'])[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
-        percent = click_total / (click_total + ignore_total)
-        # print(type(percent))
-        profile = pd.concat([profile, percent], axis=1)  # .fillna(0)
-    profile = profile.fillna(0).reset_index()
-    profile.day = profile.day+7
-    return profile
 #
 # def get_plan_summary():
 #     plan = get_plan_original()
@@ -332,7 +337,7 @@ def get_plan_cat():
     return plan_original.iloc[:,last_col:].reset_index()
 
 @file_cache()
-def get_plan_original_deep():
+def get_plan_original_deep(enhance):
     plan_list = []
     for plan_file in ['train_plans.csv', 'test_plans.csv']:
         original_plan = get_original(plan_file)
@@ -345,10 +350,11 @@ def get_plan_original_deep():
     return res.fillna('0').replace({'':'0'}).astype(int)
 
 
+
 @timed()
 #@lru_cache()
 @file_cache()
-def get_plan_original_wide():
+def get_plan_original_wide(enhance):
     res_list = []
     for file in ['train_plans.csv', 'test_plans.csv']:
         base = get_original(file)
@@ -409,6 +415,8 @@ def get_query():
     train_query['d0'] = train_query.d.apply(lambda item: item.split(',')[0]).astype(float)
     train_query['d1'] = train_query.d.apply(lambda item: item.split(',')[1]).astype(float)
 
+    train_query['sphere_dis'] = train_query.apply(lambda row: getDistance(row.o0,row.o1, row.d0,row.d1,), axis=1)
+
     for precision in [5,6]:
         train_query[f'o_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.o1, row.o0, precision=precision),
                                                                axis=1)
@@ -424,7 +432,7 @@ def get_query():
 def get_plan_stati_feature_sid():
     res_list = []
 
-    plans = get_plan_original_deep()
+    plans = get_plan_original_deep() #get_plan_stati_feature_sid
 
     for col in plan_items_mini:
         tmp = plans.groupby('sid')[col].agg(['min', 'max', 'mean', 'std']).add_prefix(f'ps_{col}_')
@@ -449,7 +457,7 @@ def get_stati_feature_pid():
     query = get_query()
     query_mini = query.loc[:, ['pid', 'sid']]
 
-    plans = get_plan_original_deep()
+    plans = get_plan_original_deep() #get_stati_feature_pid
     plans = pd.merge(plans, query_mini, how='left', on='sid')
 
     pid_mode = plans.groupby('pid').transport_mode.agg(
@@ -468,16 +476,18 @@ def get_stati_feature_pid():
     return pd.concat(res_list, axis=1).reset_index()
 
 @timed()
-def get_geo_percentage(query, direct, precision):
-    hash_precision = precision
+def get_geo_percentage(query, direct, gp_level=[], prefix='glb_'):
+    #hash_precision = precision
+
+    print(gp_level)
     res_list = []
     for i in range(1, 12):
-        tmp = query.groupby([f'{direct}_hash_{hash_precision}'])[f'{i}_transport_mode'].agg({f'sugg_{direct}_{i}': 'sum'})
+        tmp = query.groupby(gp_level)[f'{i}_transport_mode'].agg({f'sugg_{direct}_{i}': 'sum'})
         tmp[f'sugg_{direct}_{i}'] = tmp[f'sugg_{direct}_{i}'] // i
 
         res_list.append(tmp.astype(int))
 
-    tmp = query.groupby([f'{direct}_hash_{hash_precision}'])['day'].agg(
+    tmp = query.groupby(gp_level)['day'].agg(
         {f'day_appear_nunique_{direct}': 'nunique', f'count_appear_{direct}': 'count'})
     res_list.append(tmp.astype(int))
 
@@ -485,9 +495,15 @@ def get_geo_percentage(query, direct, precision):
 
     for i in range(1, 12):
         tmp[f'sugg_{direct}_{i}_per'] = tmp[f'sugg_{direct}_{i}'] / tmp[f'count_appear_{direct}']
-    tmp.index.name = f'{direct}_hash_{hash_precision}'
-    return tmp.reset_index()
 
+    tmp = tmp.add_prefix(prefix)
+    # tmp.index.name = f'{direct}_hash_{hash_precision}'
+    res = tmp.reset_index()
+
+    return res
+
+
+@lru_cache()
 def get_click():
     return get_original('train_clicks.csv')
 
@@ -599,8 +615,8 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 #     return train_data, X_test
 #
 
-
-def get_train_test(drop_list=[]):
+@timed()
+def get_train_test():
     """
     train:500000, online:94358
     :param drop_list:
@@ -627,7 +643,7 @@ def get_train_test(drop_list=[]):
                    #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
                      ]
 
-    remove_list.extend(drop_list)
+    #remove_list.extend(drop_list)
     remove_list.extend([col for col in feature.columns if col.startswith('s_')])
 
     #pe_eta_price and so on
@@ -636,7 +652,7 @@ def get_train_test(drop_list=[]):
     remove_list.extend([col for col in feature.columns if 'ps_' in col])
 
     #remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
-
+    logger.info(f'Final remove list:{remove_list}')
     feature = feature.drop(remove_list, axis=1, errors='ignore')
     #feature = feature.drop(drop_list, axis=1, errors='ignore')
 
@@ -673,10 +689,14 @@ def get_feature(ratio_base=0.1, group=None, ):
 
     query = pd.merge(query, plans, how='left', on='sid')
 
+    #Fix the distance precision issue
+    query.loc[query.sphere_dis <= 10, 'sphere_dis' ] = query.loc[query.sphere_dis <= 10, 'ps_distance_min']
+
     for direct in ['o']:
         precision = 6
-        geo_hash = get_geo_percentage(query, direct, precision)
-        query = pd.merge(query, geo_hash, how='left', on=f'{direct}_hash_{precision}')
+        gp_level = [f'{direct}_hash_{precision}']
+        geo_hash = get_geo_percentage(query, direct, gp_level, )
+        query = pd.merge(query, geo_hash, how='left', on=gp_level)
 
     # for i in range(1, 12):
     #     query[f'{i}_distance_ratio'] = query[f'{i}_distance']/query['raw_dis']
@@ -708,8 +728,110 @@ def get_feature(ratio_base=0.1, group=None, ):
     return query
 
 
+from math import radians, atan, tan, sin, acos, cos
+
+
+def getDistance(latA, lonA, latB, lonB):
+    ra = 6378140  # radius of equator: meter
+    rb = 6356755  # radius of polar: meter
+    flatten = (ra - rb) / ra  # Partial rate of the earth
+    # change angle to radians
+    radLatA = radians(latA)
+    radLonA = radians(lonA)
+    radLatB = radians(latB)
+    radLonB = radians(lonB)
+
+    try:
+        pA = atan(rb / ra * tan(radLatA))
+        pB = atan(rb / ra * tan(radLatB))
+        x = acos(sin(pA) * sin(pB) + cos(pA) * cos(pB) * cos(radLonA - radLonB))
+        c1 = (sin(x) - x) * (sin(pA) + sin(pB)) ** 2 / cos(x / 2) ** 2
+        c2 = (sin(x) + x) * (sin(pA) - sin(pB)) ** 2 / sin(x / 2) ** 2
+        dr = flatten / 8 * (c1 - c2)
+        distance = ra * (x + dr)
+        return distance  # meter
+    except:
+        return 0.0000001
+
+
+
+def get_convert_profile_click_percent(feature):
+    col = sorted([item for item in feature.columns if item.endswith('transport_mode')])
+    df_col = col.copy()
+    gp_level  = ['pid']
+    df_col.extend( gp_level )
+    df_col.append( 'click_mode'  )
+    # Click
+    logger.info(f'Only base on day from 0 to {val_cut_point} to cal click percentage')
+    click = feature.loc[:, df_col].copy()
+    for sn, cur_col in enumerate(tqdm(col, 'Click sum') ):
+        #print(cur_col)
+        click[cur_col] = click.apply(lambda item: 1 if item[cur_col] > 0 and item[cur_col] == item.click_mode else 0,
+                                     axis=1)
+
+    # Ignore
+    ignore = feature.loc[:, df_col].copy()
+    for sn, cur_col in  enumerate(tqdm(col, 'Ignore sum') ):
+        #print('ignore', cur_col)
+        ignore[cur_col] = ignore.apply(
+            lambda item: 1 if item[cur_col] > 0 and item[cur_col] != item['click_mode'] else 0, axis=1)
+
+    profile = pd.DataFrame()
+    for sn, cur_col in enumerate(tqdm(col, 'Cal percentage') ):
+        #print(cur_col)
+        click_total = click.groupby(gp_level)[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
+        ignore_total = ignore.groupby(gp_level)[cur_col].agg({f'click_p_{sn+1:02}': 'sum'})
+        percent = click_total / (click_total + ignore_total)
+        # print(type(percent))
+        profile = pd.concat([profile, percent], axis=1)  # .fillna(0)
+    profile = profile.fillna(0).reset_index()
+    #profile.day = profile.day+7
+    return profile
+
+
+def get_convert_recommend(feature):
+    new_fea = feature.copy()
+    new_fea = new_fea.loc[new_fea.click_mode >=0 ]
+    new_fea.click_mode = new_fea.click_mode == new_fea.o_seq_0
+
+    gp_col = 'o_seq_0'
+    new_fea = new_fea.groupby(gp_col).click_mode.agg(['sum','count'])
+    new_fea[f'con_{gp_col}'] = new_fea['sum']/ new_fea['count']
+    return new_fea.iloc[:, -1].reset_index()
+
+@timed()
+def extend_split_feature(train, val, test, drop_list=[]):
+    train_index = train.index
+    val_index = val.index
+    test_index = test.index
+    # profile_click =  get_convert_profile_click_percent(train)
+    #
+    # train = pd.merge( train, profile_click, how='left', on='pid' )
+    # val   = pd.merge( val,   profile_click, how='left', on='pid')
+    # test  = pd.merge( test,  profile_click, how='left', on='pid')
+
+    # recommend = get_convert_recommend(train)
+    # train = pd.merge(  train, recommend,  how='left', on='o_seq_0')
+    # val   = pd.merge(  val,   recommend, how='left', on='o_seq_0')
+    # test  = pd.merge(  test,  recommend, how='left', on='o_seq_0')
+
+    del train['click_mode']
+    del val['click_mode']
+
+    train = train.drop(drop_list, axis=1, errors='ignore')
+    val = val.drop(drop_list, axis=1, errors='ignore')
+    test = test.drop(drop_list, axis=1, errors='ignore')
+
+    train.index = train_index
+    val.index = val_index
+    test.index = test_index
+    logger.info(f'extend_split_feature Train:{train.shape}, val:{val.shape}, test:{test.shape}, col_list:{train.columns}')
+    return train, val, test
+
+
+
 if __name__ == '__main__':
-    get_plan_original_deep()
+    get_plan_original_deep() # main
     get_plan_original_wide()
     get_feature()
     """
