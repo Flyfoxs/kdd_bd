@@ -433,10 +433,6 @@ def entend_plan(plans, sid, enable_extend):
     return df_list
 
 
-def get_original_dummy_sid():
-    deep_plan = get_plan_original_deep()
-    return deep_plan.loc[deep_plan.en_label==0].index.values
-
 
 @timed()
 #@lru_cache()
@@ -459,10 +455,6 @@ def get_plan_original_wide():
     plan_part = pd.concat(plan_list, axis=1)
 
     plan_part = plan_part.reset_index()
-
-    plan_part['en_lable'] = 1
-
-    plan_part.loc[plan_part.dummy_sid.isin(get_original_dummy_sid()) , 'en_lable'] = 0
 
     plan_part = pd.merge(base, plan_part, on='sid')
     return plan_part.set_index('dummy_sid')
@@ -546,6 +538,9 @@ def get_stati_feature_pid():
     query_mini = query.loc[:, ['pid', 'sid']]
 
     plans = get_plan_original_deep() #get_stati_feature_pid
+
+    plans = plans.loc[plans.en_label==0]
+
     plans = pd.merge(plans, query_mini, how='left', on='sid')
 
     pid_mode = plans.groupby('pid').transport_mode.agg(
@@ -567,6 +562,7 @@ def get_stati_feature_pid():
 def get_geo_percentage(query, direct, gp_level=[], prefix='glb_'):
     #hash_precision = precision
 
+    query = query.loc[query.en_label==0].copy()
     print(gp_level)
     res_list = []
     for i in range(1, 12):
