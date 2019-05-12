@@ -50,72 +50,47 @@ from  pandas import Series
 
 @file_cache()
 def get_plan_model_sequence():
-    """
-    get the display model sequence
-    :return:
-    """
-    def get_model(plans):
-        plans = json.loads(plans)
-        res = {}
-        if plans:
-            for sn, plan in enumerate(plans):
-                res[str(sn)] = plan['transport_mode']
-        return Series(res)
-
+    deep_plan = get_plan_original_deep() #get_plan_model_sequence
+    deep_plan = deep_plan.set_index('dummy_sid')
     res_list = []
-    for plan_file in ['train_plans.csv', 'test_plans.csv']:
-        original_plan = get_original(plan_file)
-        original_plan = original_plan.set_index(['sid'])
-        del original_plan['plan_time']
+    #res_list.append(deep_plan.dummy_sid)
+    for i in range(12):
+        if i == 0:
+            sel_col = ['en_label', 'transport_mode', ]
+        else:
+            sel_col = ['transport_mode']
+        recomm_mode = deep_plan.loc[deep_plan.sn==i, sel_col ]
+        recomm_mode.rename({'transport_mode':f'o_seq_{i}'}, inplace = True, axis=1)
+        if recomm_mode.iloc[:,-1].sum()==0 :
+            logger.info(f'No sid have more than {i} plan')
+            break
+        res_list.append(recomm_mode)
 
-        model_seq = original_plan.plans.apply(lambda item: get_model(item))
 
-        model_seq.columns = [f'o_seq_{item}' for item in  model_seq.columns]
-
-        model_seq = model_seq.fillna(0)
-
-        res_list.append(model_seq.astype(int) )
-
-    return pd.concat(res_list)
+    return pd.concat(res_list, axis=1)
 
 @file_cache()
-def get_plan_mini(model=1, plan_file='test_plans.csv', ):
+def get_plan_mini(model):
     """
     split the jasn to 11 model group
     :param plan_file:
     :param model:
     :return:
     """
-    original_plan = get_original(plan_file)
-    def get_model(plans, model):
-        plans = json.loads(plans)
-        if plans:
-            for sn, plan in enumerate(plans):
-                if plan['transport_mode'] == model:
-                    #plan['order'] = sn
-                    if plan['price'] is None or len(str(plan['price'])) == 0:
-                        plan['price'] = 0
-                    return Series(plan).astype(int)
-        return Series()
 
-    # model=1
-    sigle_model = original_plan.plans.apply(lambda item: get_model(item, model))
+    deep_plan= get_plan_original_deep() #get_plan_mini
+
+    sigle_model = deep_plan.loc[deep_plan.transport_mode==model]#.copy()
+    old_len = len(sigle_model)
+    sigle_model = sigle_model.drop_duplicates('dummy_sid')
+
+    logger.info(f'There are {old_len - len(sigle_model)} records were remove from {old_len} for mode:{model}')
 
     sigle_model['price'] = sigle_model['price'].fillna(0)  # .astype(float)
 
-    sigle_model = sigle_model.fillna(0).astype(int)
+    sigle_model = sigle_model.fillna(0).astype(int)#.set_index('dummy_sid')
 
-
-    if 'distance' not in sigle_model.columns:
-        logger.warning(f'No plan is found for model:{model}')
-        return pd.DataFrame()
-    col_list = plan_items
-
-    mini_plan = original_plan.loc[:, ['sid']]
-
-    mini_plan[col_list] = sigle_model[col_list]
-
-    mini_plan = mini_plan.set_index(['sid'])
+    mini_plan = sigle_model.loc[:, plan_items]
 
     mini_plan['pe_eta_price'] = mini_plan['eta']/mini_plan['price']
     mini_plan['pe_dis_price'] = mini_plan['distance']/mini_plan['price']
@@ -127,8 +102,12 @@ def get_plan_mini(model=1, plan_file='test_plans.csv', ):
 
     #mini_plan['transport_mode'] = mini_plan['transport_mode']//model
 
-    mini_plan.columns = [[str(model)] * len(mini_plan.columns), mini_plan.columns]
-    return mini_plan
+    mini_plan['sid']       = sigle_model.sid
+    mini_plan['dummy_sid'] = sigle_model.dummy_sid
+
+    mini_plan = mini_plan.set_index(['dummy_sid', 'sid'])
+
+    return mini_plan.add_prefix(f'{model}_')
 
 
 @lru_cache()
@@ -227,19 +206,17 @@ def get_plan_percentage():
     plan = get_plan_original_wide()
     res_list = []
     for item in plan_items_mini:
-        col_list = [col for col in plan.columns if col[1] == item]
+        #print(item)
+        col_list = [col for col in plan.columns if col.endswith(item)]
         plan_percent = plan.loc[:, col_list].copy()
+        #print(plan_percent.columns)
         total = plan_percent.max(axis=1)
         for col in plan_percent:
-            plan_percent[(str(col[0]), f'{col[1]}_max_p')] = round(plan_percent[col] / total, 4)
+            plan_percent[f'{col}_max_p'] = round(plan_percent[col] / total, 4)
             del plan_percent[col]
 
         res_list.append(plan_percent)
     res = pd.concat(res_list, axis=1)
-
-    # res.columns.set_levels([ f'{item[1]}_p' for item in res.columns ],level=1,inplace=True)
-    # res.columns = [ (item[0], f'{item[1]}_p') for item in res.columns]
-    res = res.sort_index(axis=1, level=1)
     return res
 
 
@@ -315,7 +292,7 @@ def get_plans():
     #todo plan_stati
     plan = pd.concat([plan, plan_pg, seq, plan_stati], axis=1)
 
-    plan.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plan.columns]
+    #plan.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plan.columns]
 
     return plan.reset_index()
 
@@ -335,50 +312,160 @@ def get_plan_cat():
             logger.info((f'\n{col}\n', plan_original[col].value_counts()))
 
     return plan_original.iloc[:,last_col:].reset_index()
+#
+# @file_cache()
+# def get_plan_original_deep():
+#     plan_list = []
+#     for plan_file in ['train_plans.csv', 'test_plans.csv']:
+#         original_plan = get_original(plan_file)
+#         for sn, row in tqdm(original_plan.iterrows(), f'convert {plan_file}'):
+#             plans = json.loads(row.plans)
+#             plans_ex = entend_plan(plans, row.sid )
+#             plan_list.extend(plans_ex)
+#     res = pd.DataFrame(plan_list)
+#     res = res.fillna('0').replace({'':'0'}).astype(int)#.set_index('dummy_sid')
+#     res.index = res.dummy_sid
+#
+#
+#     return res
+
+
+
+@lru_cache()
+def get_enhance_sid():
+    plans = get_original('train_plans.csv')
+    print(plans.shape)
+    click = get_original('train_clicks.csv')
+
+    plans = pd.merge(plans, click, how='left', on='sid')
+    plans.click_mode = plans.click_mode.fillna(0).astype(int)
+    plans = plans.loc[plans.click_mode.isin(enhance_model)]
+    return dict(zip(plans.sid.values, plans.click_mode.values))
 
 @file_cache()
-def get_plan_original_deep(enhance):
+def get_plan_original_deep():
     plan_list = []
     for plan_file in ['train_plans.csv', 'test_plans.csv']:
         original_plan = get_original(plan_file)
-        for sn, row in tqdm(original_plan.iterrows(), f'convert {plan_file}'):
+        normal_plan = original_plan.loc[~original_plan.sid.isin(get_enhance_sid())]
+        for sn, row in tqdm(normal_plan.iterrows(), f'normal_plan {plan_file}, {len(normal_plan)}'):
             plans = json.loads(row.plans)
-            for single_plan in plans:
-                single_plan['sid'] = row.sid
-                plan_list.append(single_plan)
-    res = pd.DataFrame(plan_list)
-    return res.fillna('0').replace({'':'0'}).astype(int)
+            plans_ex = entend_plan(plans, row.sid, False)
+            plan_list.extend(plans_ex)
 
+        extend_plan = original_plan.loc[original_plan.sid.isin(get_enhance_sid())]  # .head(2)
+        for sn, row in tqdm(extend_plan.iterrows(), f'extend_plan {plan_file}, {len(extend_plan)}'):
+            plans = json.loads(row.plans)
+            plans_ex = entend_plan(plans, row.sid, True)
+            plan_list.extend(plans_ex)
+    res = pd.DataFrame(plan_list)
+    res = res.fillna('0').replace({'': '0'}).astype(int)
+    res.index = res.dummy_sid
+    return res
+
+
+dummy_sid = 1000
+
+
+def entend_plan(plans, sid, enable_extend):
+    sid = int(sid)
+
+    global dummy_sid
+
+    df_list = []
+    plan_arr = [None] * 12
+    full_mode_list = []
+    for sn, single_plan in enumerate(plans):
+        single_plan['sid'] = sid
+        single_plan['sn'] = sn
+        single_plan['en_label'] = 0
+        single_plan['dummy_sid'] = dummy_sid
+        df_list.append(single_plan.copy())
+        transport_mode = int(single_plan['transport_mode'])
+        # print(transport_mode, single_plan)
+        plan_arr[transport_mode] = single_plan
+        full_mode_list.append(transport_mode)
+
+    dummy_sid += 1
+
+    #
+    # if enable_extend and sid in get_enhance_sid():
+    #
+    #     click_mode = get_enhance_sid()[sid]
+    #
+    #     # original_df = pd.DataFrame(plan_list)
+    #
+    #     remove_mode_list = full_mode_list.copy()
+    #     if click_mode > 0:
+    #         remove_mode_list.remove(click_mode)
+    #     # 确保最后保留一个plan
+    #     elif click_mode == 0 and len(remove_mode_list) == 1:
+    #         remove_mode_list = []
+    #
+    #     for en_sn, remove_mode in enumerate(remove_mode_list):
+    #         keep_mode = full_mode_list.copy()
+    #         keep_mode.remove(remove_mode)
+    #         # print(dummy_sid, keep_mode,  remove_mode, click_mode)
+    #         for sn, model in enumerate(keep_mode):
+    #             ex_plan = plan_arr.copy()[model]
+    #             ex_plan['dummy_sid'] = dummy_sid
+    #             ex_plan['en_label'] = en_sn + 1
+    #             ex_plan['sn'] = sn
+    #             df_list.append(ex_plan.copy())
+    #         dummy_sid += 1
+
+    #上采样
+    if enable_extend and sid in get_enhance_sid():
+        for en_sn in range(1, 4):
+            for sn, single_plan in enumerate(plans):
+                single_plan['sid'] = sid
+                single_plan['sn'] = sn
+                single_plan['en_label'] = en_sn
+                single_plan['dummy_sid'] = dummy_sid
+                df_list.append(single_plan.copy())
+                transport_mode = int(single_plan['transport_mode'])
+                # print(transport_mode, single_plan)
+                plan_arr[transport_mode] = single_plan
+                full_mode_list.append(transport_mode)
+
+        dummy_sid += 1
+
+    return df_list
+
+
+def get_original_dummy_sid():
+    deep_plan = get_plan_original_deep()
+    return deep_plan.loc[deep_plan.en_label==0].index.values
 
 
 @timed()
 #@lru_cache()
 @file_cache()
-def get_plan_original_wide(enhance):
+def get_plan_original_wide():
     res_list = []
+    base_list = []
     for file in ['train_plans.csv', 'test_plans.csv']:
         base = get_original(file)
-        base = base.set_index(['sid'])
-        del base['plan_time']
-        from multiprocessing import Pool as ThreadPool  # 进程
-        from functools import partial
-        get_plan_mini_ex = partial(get_plan_mini, plan_file= file)
+        base_list.append(base)
+    base = pd.concat(base_list)
+    from multiprocessing import Pool as ThreadPool  # 进程
+    from functools import partial
+    get_plan_mini_ex = partial(get_plan_mini)
 
-        pool = ThreadPool(6)
-        plan_list = pool.map(get_plan_mini_ex, tqdm(range(1, 12)), chunksize=1)
+    pool = ThreadPool(6)
+    plan_list = pool.map(get_plan_mini_ex, tqdm(range(1, 12)), chunksize=1)
 
-        # if wide:
-        plan_list.append(base)
 
-        plan_part = pd.concat(plan_list, axis=1)
-        res_list.append(plan_part)
-        # else:
-        #     for df in tqdm(plan_list):
-        #         df.columns = df.columns.droplevel(0)
-        #         df = df.loc[df.transport_mode>0]
-        #         res_list.append(df)
+    plan_part = pd.concat(plan_list, axis=1)
 
-    return pd.concat(res_list, axis=0)
+    plan_part = plan_part.reset_index()
+
+    plan_part['en_lable'] = 1
+
+    plan_part.loc[plan_part.dummy_sid.isin(get_original_dummy_sid()) , 'en_lable'] = 0
+
+    plan_part = pd.merge(base, plan_part, on='sid')
+    return plan_part.set_index('dummy_sid')
 
 
 
@@ -432,13 +519,14 @@ def get_query():
 def get_plan_stati_feature_sid():
     res_list = []
 
+    #TODO, remove enhance plan
     plans = get_plan_original_deep() #get_plan_stati_feature_sid
 
     for col in plan_items_mini:
-        tmp = plans.groupby('sid')[col].agg(['min', 'max', 'mean', 'std']).add_prefix(f'ps_{col}_')
+        tmp = plans.groupby('dummy_sid')[col].agg(['min', 'max', 'mean', 'std']).add_prefix(f'ps_{col}_')
         res_list.append(tmp)
 
-    tmp = plans.groupby('sid')['transport_mode'].agg(['count','nunique']).add_prefix(f'ps_transport_mode_')
+    tmp = plans.groupby('dummy_sid')['transport_mode'].agg(['count','nunique']).add_prefix(f'ps_transport_mode_')
     tmp['ps_transport_mode_nunique'] = tmp['ps_transport_mode_count'] - tmp['ps_transport_mode_nunique']
     res_list.append(tmp)
     return pd.concat(res_list, axis=1)
@@ -616,7 +704,7 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 #
 
 @timed()
-def get_train_test():
+def get_train_test(enhance_level):
     """
     train:500000, online:94358
     :param drop_list:
@@ -636,38 +724,17 @@ def get_train_test():
         feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes.astype(int)
 
 
-    remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
-                   'o', 'd', 'label', 'req_time', 'click_time', 'date',
-                   'day', 'plan_time',
-
-                   #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
-                     ]
-
-    #remove_list.extend(drop_list)
-    remove_list.extend([col for col in feature.columns if col.startswith('s_')])
-
-    #pe_eta_price and so on
-    remove_list.extend([col for col in feature.columns if '_pe_' in col])
-
-    remove_list.extend([col for col in feature.columns if 'ps_' in col])
-
-    #remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
-    logger.info(f'Final remove list:{remove_list}')
-    feature = feature.drop(remove_list, axis=1, errors='ignore')
     #feature = feature.drop(drop_list, axis=1, errors='ignore')
 
-
-    for col, type_ in feature.dtypes.sort_values().iteritems():
-        if type_ not in ['int64', 'int16', 'int32', 'float64']:
-            logger.error(col, type_)
 
     #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
 
     train_data = feature.loc[(feature.click_mode >= 0)]
+    train_data = train_data.loc[train_data.en_label <= enhance_level ]
 
     X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
 
-    logger.info((train_data.shape, list(train_data.columns)))
+    #logger.info((train_data.shape, list(train_data.columns)))
 
     return train_data, X_test
 
@@ -818,20 +885,47 @@ def extend_split_feature(train, val, test, drop_list=[]):
     del train['click_mode']
     del val['click_mode']
 
-    train = train.drop(drop_list, axis=1, errors='ignore')
-    val = val.drop(drop_list, axis=1, errors='ignore')
-    test = test.drop(drop_list, axis=1, errors='ignore')
+
+    remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
+                   'o', 'd', 'label', 'req_time', 'click_time', 'date',
+                   'day', 'plan_time','sid', 'dummy_sid',
+                   'req_time','plan_time','click_time', 'en_label', 'en_lable',
+                   'sphere_dis','o_seq_7',
+
+                   #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
+                     ]
+
+    remove_list.extend(drop_list)
+
+    remove_list.extend([col for col in train.columns if col.startswith('s_')])
+
+    #pe_eta_price and so on
+    remove_list.extend([col for col in train.columns if '_pe_' in col])
+
+    remove_list.extend([col for col in train.columns if 'ps_' in col])
+
+    #remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
+    logger.info(f'Final remove list:{remove_list}')
+
+    train = train.drop(remove_list, axis=1, errors='ignore')
+    val = val.drop(remove_list, axis=1, errors='ignore')
+    test = test.drop(remove_list, axis=1, errors='ignore')
+
+    for col, type_ in train.dtypes.sort_values().iteritems():
+        if type_ not in ['int64', 'int16', 'int32', 'float64']:
+            logger.error((col, type_))
 
     train.index = train_index
     val.index = val_index
     test.index = test_index
-    logger.info(f'extend_split_feature Train:{train.shape}, val:{val.shape}, test:{test.shape}, col_list:{train.columns}')
+    logger.info(f'extend_split_feature Train:{train.shape}, val:{val.shape}, test:{test.shape}, col_list:{list(train.columns)}')
     return train, val, test
 
 
 
 if __name__ == '__main__':
-    get_plan_original_deep() # main
+    deep = get_plan_original_deep() #main
+    #get_plan_original_deep() # main
     get_plan_original_wide()
     get_feature()
     """
