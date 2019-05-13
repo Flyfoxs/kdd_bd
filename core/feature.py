@@ -64,6 +64,7 @@ def get_plan_model_sequence():
         if recomm_mode.iloc[:,-1].sum()==0 :
             logger.info(f'No sid have more than {i} plan')
             break
+        logger.info(f'recomm_mode shape:{recomm_mode.shape}')
         res_list.append(recomm_mode)
 
 
@@ -428,7 +429,7 @@ def entend_plan(plans, sid, enable_extend):
                 plan_arr[transport_mode] = single_plan
                 full_mode_list.append(transport_mode)
 
-        dummy_sid += 1
+            dummy_sid += 1
 
     return df_list
 
@@ -446,10 +447,14 @@ def get_plan_original_wide():
     base = pd.concat(base_list)
     from multiprocessing import Pool as ThreadPool  # 进程
     from functools import partial
+
+    #Initial
+    get_plan_original_deep()
+
     get_plan_mini_ex = partial(get_plan_mini)
 
     pool = ThreadPool(6)
-    plan_list = pool.map(get_plan_mini_ex, tqdm(range(1, 12)), chunksize=1)
+    plan_list = pool.map(get_plan_mini_ex, tqdm(range(1, 12)), chunksize=1,)
 
 
     plan_part = pd.concat(plan_list, axis=1)
@@ -885,8 +890,8 @@ def extend_split_feature(train, val, test, drop_list=[]):
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
                    'day', 'plan_time','sid', 'dummy_sid',
-                   'req_time','plan_time','click_time', 'en_label', 'en_lable',
-                   'sphere_dis','o_seq_7',
+                   'req_time','plan_time','click_time', 'en_label',
+                   'sphere_dis'#,'o_seq_7',
 
                    #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
                      ]

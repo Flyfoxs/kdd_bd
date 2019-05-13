@@ -18,7 +18,7 @@ class manual_split:
             train_sid, val_sid = get_split_sid(i)
 
             train_index = X_data.loc[X_data.sid.isin(train_sid)]
-            val_index   = X_data.loc[X_data.sid.isin(val_sid) & (X_data.en_lable==0)]
+            val_index   = X_data.loc[X_data.sid.isin(val_sid) & (X_data.en_label==0)]
             split_list.append((train_index.index.values, val_index.index.values))
         return  split_list
 
