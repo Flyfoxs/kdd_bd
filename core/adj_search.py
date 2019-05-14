@@ -24,7 +24,11 @@ input_folder = './input/data_set_phase1'
 # df = pd.DataFrame(columns=['paras', 'score'])
 def get_best_paras(df: pd.DataFrame):
     if len(df) == 0:
-        return [0.9, 1.0, 0.6, 1.2, 1.6, 0.7, 0.9, 0.9, 1.6, 0.5, 1.3, 1.1]
+        return [[1.0, 0.9, 0.7, 1.8, 2.6, 0.7, 1.5, 0.82, 1.4, 0.8, 1.2, 0.9],
+                [0.9, 1.0, 0.6, 1.2, 1.6, 0.7, 0.9, 0.9, 1.6, 0.5, 1.3, 1.1],
+                [0.97, 0.9, 0.64, 1.8, 2.8, 0.68, 1.54, 0.84, 1.4, 0.8, 1.22, 1.01]
+                ]
+        #return []
         #return [np.ones(12)]
     else:  ##
         df = df.sort_values('score', ascending=False)
@@ -65,6 +69,9 @@ def find_best_para(file):
     df = pd.DataFrame(columns=['paras', 'score'])
 
     adj = pd.read_hdf(file, 'train')
+
+    raw_score = f1_score(adj.click_mode.values, adj.iloc[:,:-1].idxmax(axis=1).astype(int), average='weighted')
+
     lr = 0.1
     for i in range(2000):
         for paras in get_best_paras(df):
@@ -98,17 +105,17 @@ def find_best_para(file):
     df.to_csv('./output/search_para.csv')
     print(get_best_paras(df))
     print(df.head(5))
-    return df.iloc[0].score, list(df.iloc[0].paras)
+    return raw_score, df.iloc[0].score, list(df.iloc[0].paras)
 
-def gen_sub_file(input_file, paras, sub_file):
+def gen_sub_file(input_file, paras, adj_score, raw_score):
     sub = pd.read_hdf(input_file, 'test')
+
+    sub_file = f'./output/sub/st_adj_{adj_score:0.4f}_{raw_score:0.6f}.csv'
+
     for i in range(12):
         sub.iloc[:, i] = sub.iloc[:, i] * paras[i]
 
     sub['recommend_mode'] = sub.idxmax(axis=1)
-
-
-    #vali_sub(sub)
 
     import csv
     sub[['recommend_mode']].to_csv(sub_file, quoting=csv.QUOTE_ALL)
@@ -117,20 +124,20 @@ def gen_sub_file(input_file, paras, sub_file):
 
 if __name__== '__main__':
     """
-    The stack_file h5 format
-    train(13 columns):0,1,..11,click_mode
-    test (12 columns):0,1,..11
+    The stack_file require the forate as below:
+    train:(13 columns): 0,1,..11,click_mode
+    test: (12 columns): 0,1,..11
     """
 
     for input_file in [
-                  './output/stacking/L_500000_191_0.68164_0422_0730.h5',
-                  './output/stacking/L_500000_191_0.68142_0434_0730.h5',
+                  # './output/stacking/L_500000_191_0.68164_0422_0730.h5',
+                  # './output/stacking/L_500000_191_0.68142_0434_0730.h5',
                   './output/stacking/L_0.68018_0914_1667.h5',]:
-        score, best_para  = find_best_para(input_file)
-        logger.info(f'{input_file},score:{score:0.5f}, best_para:{ best_para }')
+        raw_score, adj_score, best_para  = find_best_para(input_file)
+        logger.info(f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f}, best_para:{ best_para }')
 
-        sub_file  = f'./output/sub/st_adj_{score:0.5f}.csv'
-        gen_sub_file(input_file, best_para, sub_file)
+
+        gen_sub_file(input_file, best_para, adj_score, raw_score)
 
 
 
