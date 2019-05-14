@@ -5,10 +5,35 @@ from sklearn.model_selection import KFold, StratifiedKFold, GroupKFold
 
 class manual_split:
     def split(self, X_data, cut_point=47):
+        #return self.split_dummy_sid(X_data)
         return self.split_sk(X_data)
         #return self.split_range( X_data, cut_point) #cut_point#54, train:(445340,), val:(54660,)
 
         #return self.split_group(X_data)
+
+    # def split_dummy_sid(self, X_data):
+    #     X_data = X_data.reset_index()
+    #     split_list = []
+    #     for i in range(5):
+    #         train_sid, val_sid = get_split_sid(i)
+    #
+    #         train_index = X_data.loc[X_data.sid.isin(train_sid)]
+    #         val_index   = X_data.loc[X_data.sid.isin(val_sid) & (X_data.en_label==0)]
+    #         split_list.append((train_index.index.values, val_index.index.values))
+    #     return  split_list
+    #
+
+    def split_sk(self, X_data):
+        feature = get_feature()
+        feature = feature.loc[X_data.index]
+
+        feature = feature.reset_index()
+
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
+        split_fold = folds.split(feature.values, feature.click_mode.values)
+
+        return split_fold
+
 
 
     def split_range(self,X_data,  cut_point):
@@ -22,16 +47,6 @@ class manual_split:
                  tmp[(tmp.day>=cut_point) & (tmp.day<=60) ].index)]
         return tqdm(res, f'split_range:{cut_point}')
 
-    def split_sk(self, X_data):
-        feature = get_feature()
-        feature = feature.loc[X_data.index]
-
-        feature = feature.reset_index()
-
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
-        split_fold = folds.split(feature.values, feature.click_mode.values)
-
-        return split_fold
 
     def split_group(self,X_data,  begin_point=0):
         feature = get_feature()

@@ -4,7 +4,7 @@ plan_items = ['distance', 'eta', 'price', 'transport_mode']
 
 plan_items_mini =  ['distance', 'eta', 'price']
 
-enhance_model = [0, 3, 4, 6, 9 ]
+enhance_model = {0:1, 3:1, 4:1, 6:1, 9:1 }
 
 val_cut_point = 60-7
 

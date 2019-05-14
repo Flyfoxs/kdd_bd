@@ -337,7 +337,7 @@ def get_plan_cat():
     return plan_original.iloc[:,last_col:].reset_index()
 
 @file_cache()
-def get_plan_original_deep(enhance):
+def get_plan_original_deep():
     plan_list = []
     for plan_file in ['train_plans.csv', 'test_plans.csv']:
         original_plan = get_original(plan_file)
@@ -354,7 +354,7 @@ def get_plan_original_deep(enhance):
 @timed()
 #@lru_cache()
 @file_cache()
-def get_plan_original_wide(enhance):
+def get_plan_original_wide():
     res_list = []
     for file in ['train_plans.csv', 'test_plans.csv']:
         base = get_original(file)
@@ -638,7 +638,7 @@ def get_train_test():
 
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
-                   'day', 'plan_time',
+                   'day', 'plan_time','sphere_dis','en_label',
 
                    #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
                      ]
@@ -799,34 +799,29 @@ def get_convert_recommend(feature):
     new_fea[f'con_{gp_col}'] = new_fea['sum']/ new_fea['count']
     return new_fea.iloc[:, -1].reset_index()
 
+def sample_ex(df:pd.DataFrame, frac):
+    res_list = [df]*int(frac)
+    res_list.append(df.sample(frac=frac%1, random_state=2019))
+    return pd.concat(res_list)
+
 @timed()
-def extend_split_feature(train, val, test, drop_list=[]):
-    train_index = train.index
-    val_index = val.index
-    test_index = test.index
-    # profile_click =  get_convert_profile_click_percent(train)
-    #
-    # train = pd.merge( train, profile_click, how='left', on='pid' )
-    # val   = pd.merge( val,   profile_click, how='left', on='pid')
-    # test  = pd.merge( test,  profile_click, how='left', on='pid')
+def extend_split_feature(df, trn_idx, val_idx , enhance={}): #train, val, test, drop_list=[], ):
+    val_x = df.iloc[val_idx, :-1]
+    val_y = df.iloc[val_idx].click_mode
 
-    # recommend = get_convert_recommend(train)
-    # train = pd.merge(  train, recommend,  how='left', on='o_seq_0')
-    # val   = pd.merge(  val,   recommend, how='left', on='o_seq_0')
-    # test  = pd.merge(  test,  recommend, how='left', on='o_seq_0')
+    train = df.iloc[trn_idx]
 
-    del train['click_mode']
-    del val['click_mode']
+    for mode, frac in dict(enhance).items():
+        base = train.loc[train.click_mode==mode]
+        add_df = sample_ex(base, frac)
+        logger.info(f'Enhance mode:{mode}, append {len(add_df)} records with frac:{frac} and base:{base.shape}')
+        train = train.append(add_df)
 
-    train = train.drop(drop_list, axis=1, errors='ignore')
-    val = val.drop(drop_list, axis=1, errors='ignore')
-    test = test.drop(drop_list, axis=1, errors='ignore')
+    train_x = train.iloc[:, :-1]
+    train_y = train.click_mode
 
-    train.index = train_index
-    val.index = val_index
-    test.index = test_index
-    logger.info(f'extend_split_feature Train:{train.shape}, val:{val.shape}, test:{test.shape}, col_list:{train.columns}')
-    return train, val, test
+
+    return train_x, train_y, val_x, val_y
 
 
 
