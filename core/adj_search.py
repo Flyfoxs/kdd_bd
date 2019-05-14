@@ -127,6 +127,8 @@ if __name__== '__main__':
     The stack_file require the forate as below:
     train:(13 columns): 0,1,..11,click_mode
     test: (12 columns): 0,1,..11
+    
+    index is sid, and dataframe is sorted by index asc
     """
 
     for input_file in [

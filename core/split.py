@@ -24,7 +24,7 @@ class manual_split:
     #
 
     def split_sk(self, X_data):
-        feature = get_feature()
+        feature = get_feature().copy()
         feature = feature.loc[X_data.index]
 
         feature = feature.reset_index()

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from core.feature import *
 
 from core.split import *
@@ -10,6 +12,7 @@ from sklearn import datasets
 from sklearn.metrics import roc_auc_score,accuracy_score
 from core.metric import *
 import fire
+
 
 @timed()
 def vali_sub(sub):
@@ -55,8 +58,8 @@ def gen_sub(file):
     res = res.set_index('sid')
     res['recommend_mode'] = res.idxmax(axis=1)
 
-    zero_sid = get_feature()
-    zero_sid = zero_sid[(zero_sid.o_seq_0 == 0) & (zero_sid.click_mode == -1)].index.values
+    feature = get_feature()
+    zero_sid = feature[(feature.o_seq_0 == 0) & (feature.click_mode == -1)].index.values
     res.loc[zero_sid,'recommend_mode'] = 0
 
     vali_sub(res)
@@ -92,7 +95,7 @@ def gen_sub(file):
 
 
 @timed()
-def train_lgb(train_data, X_test, cv=False, args={}, drop_list=[], enhance=enhance_model):
+def train_lgb(train_data, X_test, cv=False, args={}, drop_list=[]):
 
     num_class = 12
 
@@ -117,7 +120,7 @@ def train_lgb(train_data, X_test, cv=False, args={}, drop_list=[], enhance=enhan
 
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
         #print(train_data.shape,trn_idx.shape, val_idx.shape , X_test.shape,trn_idx.max(), val_idx.max() )
-        train_x, train_y, val_x, val_y = extend_split_feature(train_data, trn_idx, val_idx, enhance)
+        train_x, train_y, val_x, val_y = extend_split_feature(train_data, trn_idx, val_idx)
 
 
 
@@ -178,7 +181,7 @@ def train_lgb(train_data, X_test, cv=False, args={}, drop_list=[], enhance=enhan
             predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
         elif len(args)==0: #not Search model
 
-            all_data, y_data, _, _ = extend_split_feature(train_data, range(len(train_data)), [], enhance)
+            all_data, y_data, _, _ = extend_split_feature(train_data, range(len(train_data)), [])
             all_train = lgb.Dataset(all_data, y_data, categorical_feature=cate_cols)
             clf = lgb.train(params,
                             all_train,
@@ -241,22 +244,43 @@ def get_search_space():
              }
     return space
 
-def val_droplist():
-    imp_file = './output/fi_True_760_1012_500000_191_0.6779_sphere_dis.h5'
+def search_droplist(version='0505'):
+    """
+    version, drop_columns, feature_nums, start_time, end_time, cost, score, server
+    :param version:
+    :return:
+    """
+    import pandas as pd
+    from tqdm import tqdm
+    imp_file = './output/fi_True_579_1215_500000_191_0.6781_.h5'
     tmp = pd.read_hdf(imp_file)
     tmp = tmp.groupby('feature').importance.sum().sort_values(ascending=False).index
+    for drop_columns in tqdm(tmp, 'drop_col_list'):
+        from core.db_lock import log_begin, log_end
 
-    for drop_col in tqdm(tmp, 'drop_col_list'):
-        train_ex(drop_list=[drop_col])
+        if log_begin(version, drop_columns):
+
+            res = train_ex(drop_list=drop_columns)
+
+            feature_nums = res['feature_nums']
+
+            score = -res['loss']
+
+            log_end(version, drop_columns, feature_nums, score)
+            logger.info(f'Search result:{score:0.5f},{version}, {drop_columns}')
+        else:
+            logger.warning(f'Can not get lock for {version}, {drop_columns}')
+
 
 @timed()
-def train_ex(args={}, drop_list=[], enhance = enhance_model ):
+def train_ex(args={}, drop_list='' ):
+    drop_list = drop_list.split(',')
 
     for ratio in range(1):
-        train_data, X_test = get_train_test()
+        train_data, X_test = get_train_test(drop_list)
 
         for cv in [True]:
-            res, score, feature_importance, best_iteration = train_lgb(train_data, X_test, cv=cv, args=args, drop_list=drop_list, enhance = enhance )
+            res, score, feature_importance, best_iteration = train_lgb(train_data, X_test, cv=cv, args=args )
             logger.info(f'score:{score:0.6f}, drop_col:{",".join(drop_list)}')
             if len(args) == 0 or cv == True:
                 file = f'./output/res_enhance_{cv}_{"_".join(map(str, train_data.shape))}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
@@ -267,12 +291,12 @@ def train_ex(args={}, drop_list=[], enhance = enhance_model ):
 
             feature_importance.to_hdf(f'./output/fi_{cv}_{best_iteration}_{"_".join(map(str, train_data.shape))}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
 
-    res = { 'loss': -score, 'status': STATUS_OK, 'attachments': {"message": f'{args} ', } }
+    res = { 'loss': -score, 'status': STATUS_OK, 'feature_nums':X_test.shape[1], 'attachments': {"message": f'{args} ', } }
     logger.info(res)
     return res
 
 @timed()
-def search():
+def search_paras():
     trials = Trials()
     space = get_search_space()
     best = fmin(train_ex, space, algo=tpe.suggest, max_evals=15, trials=trials)
@@ -329,7 +353,9 @@ nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
 
 #nohup python -u  core/train.py train_ex > 2019_base_0.69366536.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > drop_search_1.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_14.log 2>&1 &
+
+nohup python -u  core/train.py search_droplist > search_droplist_2.log 2>&1 &
 
 
 

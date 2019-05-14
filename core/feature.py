@@ -359,7 +359,7 @@ def get_plan_original_wide():
     for file in ['train_plans.csv', 'test_plans.csv']:
         base = get_original(file)
         base = base.set_index(['sid'])
-        del base['plan_time']
+        #del base['plan_time']
         from multiprocessing import Pool as ThreadPool  # 进程
         from functools import partial
         get_plan_mini_ex = partial(get_plan_mini, plan_file= file)
@@ -555,12 +555,12 @@ def get_profile_lda():
 
 
 def get_feature_partition(cut_begin=48, cut_end=60):
-    feature = get_feature( )
-    feature = feature.loc[(feature['day'] >= cut_begin)
+    feature = get_feature( ).copy()
+    sample = feature.loc[(feature['day'] >= cut_begin)
                           & (feature['day'] <= cut_end)
                           & (feature['click_mode'] >=0 )
                             ]
-    sample =feature.click_mode.value_counts().sort_index().to_frame()
+    sample =sample.click_mode.value_counts().sort_index().to_frame()
     sample = sample/sample.sum()
     sample['type']=f'sample_{cut_begin}_{cut_end}'
     return sample
@@ -616,13 +616,13 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 #
 
 @timed()
-def get_train_test():
+def get_train_test(drop_list):
     """
     train:500000, online:94358
     :param drop_list:
     :return:
     """
-    feature = get_feature()  # .fillna(0)
+    feature = get_feature().copy()  # .fillna(0)
     # logger.info(f'Remove simple zero case:{len(feature.loc[feature.o_seq_0 == 0])}')
     # feature = feature.loc[feature.o_seq_0 > 0]
     #There 2 days only have zero mode
@@ -638,12 +638,12 @@ def get_train_test():
 
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
-                   'day', 'plan_time','sphere_dis','en_label',
+                   'day', 'plan_time','sphere_dis','en_label', 'time_gap',
 
                    #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
                      ]
 
-    #remove_list.extend(drop_list)
+    remove_list.extend(drop_list)
     remove_list.extend([col for col in feature.columns if col.startswith('s_')])
 
     #pe_eta_price and so on
@@ -667,12 +667,12 @@ def get_train_test():
 
     X_test = feature.loc[feature.click_mode == -1].iloc[:, :-1]
 
-    logger.info((train_data.shape, list(train_data.columns)))
+    logger.info((len(train_data), len(X_test.columns) , list(X_test.columns)))
 
     return train_data, X_test
 
-@timed()
-#@lru_cache()
+
+@lru_cache()
 @file_cache()
 def get_feature(ratio_base=0.1, group=None, ):
     query = get_query()
@@ -688,6 +688,9 @@ def get_feature(ratio_base=0.1, group=None, ):
 
 
     query = pd.merge(query, plans, how='left', on='sid')
+
+    time_gap = (pd.to_datetime(query.plan_time) - pd.to_datetime(query.req_time)).dt.total_seconds()
+    query['time_gap'] = time_gap.where(time_gap >= 0, -1)
 
     #Fix the distance precision issue
     query.loc[query.sphere_dis <= 10, 'sphere_dis' ] = query.loc[query.sphere_dis <= 10, 'ps_distance_min']
@@ -719,6 +722,8 @@ def get_feature(ratio_base=0.1, group=None, ):
     query.click_mode = query.click_mode.fillna(-1)
     query.click_mode = query.click_mode.astype(int)
     query.pid        = query.pid.astype(int)
+
+
     logger.info('Finish merge click feature')
 
     query = query.set_index('sid').sort_index()
@@ -805,7 +810,7 @@ def sample_ex(df:pd.DataFrame, frac):
     return pd.concat(res_list)
 
 @timed()
-def extend_split_feature(df, trn_idx, val_idx , enhance={}): #train, val, test, drop_list=[], ):
+def extend_split_feature(df, trn_idx, val_idx , enhance={}):
     val_x = df.iloc[val_idx, :-1]
     val_y = df.iloc[val_idx].click_mode
 
@@ -828,7 +833,7 @@ def extend_split_feature(df, trn_idx, val_idx , enhance={}): #train, val, test, 
 if __name__ == '__main__':
     get_plan_original_deep() # main
     get_plan_original_wide()
-    get_feature()
+    # get_feature()
     """
     nohup python -u  core/feature.py   > feature.log  2>&1 &
     """
