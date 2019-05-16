@@ -4,10 +4,9 @@ import pandas as pd
 import numpy as np
 import warnings
 
+from sklearn.metrics import f1_score
+
 warnings.filterwarnings("ignore")
-from core.config import *
-from core.feature import *
-from core.train import *
 
 from tqdm import tqdm
 
