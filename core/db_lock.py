@@ -60,7 +60,7 @@ def log_begin(version, drop_columns):
                        )
                         """.format(drop_columns=drop_columns, version=version, server=server)
         cur = db.cursor()
-        logger.info(sql)
+        #logger.info(sql)
         cur.execute(sql)
         db.commit()
         return True
@@ -90,7 +90,7 @@ def log_end(version, drop_columns, feature_nums,  score):
                                   feature_nums=feature_nums,
                                   score=score)
     cur = db.cursor()
-    logger.debug(sql)
+    #logger.debug(sql)
     cur.execute(sql)
     db.commit()
 

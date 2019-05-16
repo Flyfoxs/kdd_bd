@@ -616,7 +616,7 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 #
 
 @timed()
-def get_train_test(drop_list):
+def get_train_test():
     """
     train:500000, online:94358
     :param drop_list:
@@ -636,30 +636,29 @@ def get_train_test(drop_list):
         feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes.astype(int)
 
 
-    remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
-                   'o', 'd', 'label', 'req_time', 'click_time', 'date',
-                   'day', 'plan_time','sphere_dis','en_label', 'time_gap',
-
-                   #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
-                     ]
-
-    remove_list.extend(drop_list)
-    remove_list.extend([col for col in feature.columns if col.startswith('s_')])
-
-    #pe_eta_price and so on
-    remove_list.extend([col for col in feature.columns if '_pe_' in col])
-
-    remove_list.extend([col for col in feature.columns if 'ps_' in col])
-
-    #remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
-    logger.info(f'Final remove list:{remove_list}')
-    feature = feature.drop(remove_list, axis=1, errors='ignore')
-    #feature = feature.drop(drop_list, axis=1, errors='ignore')
-
-
-    for col, type_ in feature.dtypes.sort_values().iteritems():
-        if type_ not in ['int64', 'int16', 'int32', 'float64']:
-            logger.error(col, type_)
+    # remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
+    #                'o', 'd', 'label', 'req_time', 'click_time', 'date',
+    #                'day', 'plan_time','sphere_dis','en_label', 'time_gap',
+    #
+    #                #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
+    #                  ]
+    #
+    # remove_list.extend(drop_list)
+    # remove_list.extend([col for col in feature.columns if col.startswith('s_')])
+    #
+    # #pe_eta_price and so on
+    # remove_list.extend([col for col in feature.columns if '_pe_' in col])
+    #
+    # remove_list.extend([col for col in feature.columns if 'ps_' in col])
+    #
+    # #remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
+    # logger.info(f'Final remove list:{remove_list}')
+    # feature = feature.drop(remove_list, axis=1, errors='ignore')
+    # #feature = feature.drop(drop_list, axis=1, errors='ignore')
+    #
+    # for col, type_ in feature.dtypes.sort_values().iteritems():
+    #     if type_ not in ['int64', 'int16', 'int32', 'float64']:
+    #         logger.error(col, type_)
 
     #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
 
@@ -713,19 +712,21 @@ def get_feature(ratio_base=0.1, group=None, ):
     #statistics, information
     stat = get_stati_feature_pid()
     query = pd.merge(query, stat, how='left', on='pid')
+    query.pid = query.pid.astype(int)
     logger.info('Finish merge stat feature')
 
     query = pd.merge(query, click, how='left', on='sid')
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0 > 0), 'click_mode']  = 0
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0), 'click_mode'] = 0 # -2
+    query.click_mode = query.click_mode.fillna(-1).astype(int)
 
-    query.click_mode = query.click_mode.fillna(-1)
-    query.click_mode = query.click_mode.astype(int)
-    query.pid        = query.pid.astype(int)
 
+    #Make click mode the last col
+    click_mode = query.click_mode
+    del query['click_mode']
+    query['click_mode'] = click_mode
 
     logger.info('Finish merge click feature')
-
     query = query.set_index('sid').sort_index()
     logger.info('Finish set index')
     query = query.fillna(0)
@@ -794,15 +795,15 @@ def get_convert_profile_click_percent(feature):
     return profile
 
 
-def get_convert_recommend(feature):
+def get_convert_recommend(feature, gp_col = ['o_seq_0']):
     new_fea = feature.copy()
     new_fea = new_fea.loc[new_fea.click_mode >=0 ]
     new_fea.click_mode = new_fea.click_mode == new_fea.o_seq_0
 
-    gp_col = 'o_seq_0'
     new_fea = new_fea.groupby(gp_col).click_mode.agg(['sum','count'])
-    new_fea[f'con_{gp_col}'] = new_fea['sum']/ new_fea['count']
-    return new_fea.iloc[:, -1].reset_index()
+    new_fea[f'conv_ratio'] = new_fea['sum']/ new_fea['count']
+    new_fea =  new_fea.add_prefix('rec_conv_'+'_'.join(gp_col)+'_')
+    return new_fea.reset_index()
 
 def sample_ex(df:pd.DataFrame, frac):
     res_list = [df]*int(frac)
@@ -810,24 +811,66 @@ def sample_ex(df:pd.DataFrame, frac):
     return pd.concat(res_list)
 
 @timed()
-def extend_split_feature(df, trn_idx, val_idx , enhance={}):
+def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list,):
     val_x = df.iloc[val_idx, :-1]
     val_y = df.iloc[val_idx].click_mode
 
     train = df.iloc[trn_idx]
 
-    for mode, frac in dict(enhance).items():
-        base = train.loc[train.click_mode==mode]
-        add_df = sample_ex(base, frac)
-        logger.info(f'Enhance mode:{mode}, append {len(add_df)} records with frac:{frac} and base:{base.shape}')
-        train = train.append(add_df)
+    # stat_col = ['pid','o_seq_0']
+    # conv = get_convert_recommend(train, stat_col)
+    # val_x = pd.merge(val_x, conv, how='left', on=stat_col)
+    # train = pd.merge(train, conv, how='left', on=stat_col)
+    # X_test = pd.merge(X_test, conv,how='left', on=stat_col)
+    #
+
+    click_mode = train.click_mode
+    del train['click_mode']
+    train['click_mode'] = click_mode
+
+    # for mode, frac in dict(enhance).items():
+    #     base = train.loc[train.click_mode==mode]
+    #     add_df = sample_ex(base, frac)
+    #     logger.info(f'Enhance mode:{mode}, append {len(add_df)} records with frac:{frac} and base:{base.shape}')
+    #     train = train.append(add_df)
 
     train_x = train.iloc[:, :-1]
     train_y = train.click_mode
 
+    train_x = remove_col(train_x, drop_list).fillna(0)
+    val_x   = remove_col(val_x, drop_list).fillna(0)
+    X_test = remove_col(X_test, drop_list).fillna(0)
 
-    return train_x, train_y, val_x, val_y
 
+    for col, type_ in val_x.dtypes.sort_values().iteritems():
+        if type_ not in ['int64', 'int16', 'int32', 'float64']:
+            logger.error((col, type_))
+
+
+    logger.info(f'extend_split_feature Train:{train_x.shape}, val:{val_x.shape}, col_list:{list(val_x.columns)}')
+    #Drop end
+
+    return train_x, train_y, val_x, val_y, X_test
+
+
+def remove_col(train, drop_list):
+    # Drop begin
+    remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
+                   'o', 'd', 'label', 'req_time', 'click_time', 'date',
+                   'day', 'plan_time', 'sphere_dis', 'en_label', 'time_gap',
+                   '10_eta',
+
+                   # 's_pid_o_hash_m_per', 's_pid_d_hash_m_per',
+                   ]
+    remove_list.extend(drop_list)
+    remove_list.extend([col for col in train.columns if col.startswith('s_')])
+    # pe_eta_price and so on
+    remove_list.extend([col for col in train.columns if '_pe_' in col])
+    remove_list.extend([col for col in train.columns if 'ps_' in col])
+    # remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
+    logger.info(f'Final remove list:{remove_list}')
+    train = train.drop(remove_list, axis=1, errors='ignore')
+    return train
 
 
 if __name__ == '__main__':
