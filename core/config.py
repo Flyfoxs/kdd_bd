@@ -40,4 +40,4 @@ good_col = [
     '1_eta_max_p', 'glb_sugg_o_6', '9_eta', '3_eta', 'glb_sugg_o_8_per', 'glb_sugg_o_1', '3_distance', 'd1',
     '9_price_max_p', '2_distance', 'glb_sugg_o_5', '7_eta_max_p', 'glb_sugg_o_9_per', 'glb_sugg_o_2',
     'glb_sugg_o_1_per', '9_distance_max_p', 'glb_sugg_o_4_per', 'o_seq_2', 'o_seq_0'
-]
+].extend(cate_cols)

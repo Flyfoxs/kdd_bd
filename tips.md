@@ -19,3 +19,6 @@ Train数据
 
 距离,价格,时间 分桶
 
+地址信息的 node 2 vec
+
+rank base on deep

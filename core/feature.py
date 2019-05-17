@@ -811,28 +811,17 @@ def sample_ex(df:pd.DataFrame, frac):
     return pd.concat(res_list)
 
 @timed()
-def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list,):
+def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list,mode_list=[]):
     val_x = df.iloc[val_idx, :-1]
     val_y = df.iloc[val_idx].click_mode
 
     train = df.iloc[trn_idx]
-
-    # stat_col = ['pid','o_seq_0']
-    # conv = get_convert_recommend(train, stat_col)
-    # val_x = pd.merge(val_x, conv, how='left', on=stat_col)
-    # train = pd.merge(train, conv, how='left', on=stat_col)
-    # X_test = pd.merge(X_test, conv,how='left', on=stat_col)
-    #
+    if mode_list:
+        train = train.loc[train.click_mode.isin(mode_list)]
 
     click_mode = train.click_mode
     del train['click_mode']
     train['click_mode'] = click_mode
-
-    # for mode, frac in dict(enhance).items():
-    #     base = train.loc[train.click_mode==mode]
-    #     add_df = sample_ex(base, frac)
-    #     logger.info(f'Enhance mode:{mode}, append {len(add_df)} records with frac:{frac} and base:{base.shape}')
-    #     train = train.append(add_df)
 
     train_x = train.iloc[:, :-1]
     train_y = train.click_mode
@@ -858,7 +847,7 @@ def remove_col(train, drop_list):
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
                    'day', 'plan_time', 'sphere_dis', 'en_label', 'time_gap',
-                   '10_eta',
+                   #'10_eta',
 
                    # 's_pid_o_hash_m_per', 's_pid_d_hash_m_per',
                    ]
