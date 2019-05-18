@@ -120,10 +120,28 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
     logger.info(f'Sub file save to {sub_file}')
 
 
+from functools import reduce
+
+# input_list = [
+#     ('./output/stacking/L_500000_268_0.67818_0439_1462.h5', 1),
+#
+#     ('./output/stacking/L_500000_190_0.67825_0534_1613.h5', 1), ]
+#
+
+def merge_file(input_list):
+    for key in ['train', 'test']:
+        df_list = [pd.read_hdf(file, key) * weight for file, weight in input_list]
+
+        # product = reduce((lambda x, y: x * y), [1, 2, 3, 4])
+        df = reduce((lambda x, y: x + y), df_list)
+        df = df / len(input_list)
+    return df
+
+
 if __name__== '__main__':
     """
     The stack_file require the format as below:
-    train:(13 columns): 0,1,..11,click_mode
+    train:(13 columns): 0,1,..11,click_mode(不是 recomm_mode,而是原始label)
     test: (12 columns): 0,1,..11
     
     index is sid, and DF is sorted by index asc
@@ -132,11 +150,14 @@ if __name__== '__main__':
     for input_file in [
                   # './output/stacking/L_500000_191_0.68164_0422_0730.h5',
                   # './output/stacking/L_500000_191_0.68142_0434_0730.h5',
-                    './output/stacking/L_500000_301_0.67828_0983_1442.h5',
+                    './output/stacking/merge.h5',
+                    './output/stacking/L_500000_268_0.67818_0439_1462.h5', #0.69898001
+
                     './output/stacking/L_500000_190_0.67825_0534_1613.h5', #0.69995215
                     './output/stacking/L_500000_190_0.67810_0579_1215.h5',
                    # './output/stacking/L_500000_190_0.67820_0520_1422.h5', #0.69937582
                   #'./output/stacking/L_0.68018_0914_1667.h5',              #0.69972754
+                    './output/stacking/L_500000_301_0.67828_0983_1442.h5',  # 0.69873236
                 ]:
         raw_score, adj_score, best_para  = find_best_para(input_file)
         logger.info(f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f}, best_para:{ best_para }')

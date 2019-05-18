@@ -50,72 +50,44 @@ from  pandas import Series
 
 @file_cache()
 def get_plan_model_sequence():
-    """
-    get the display model sequence
-    :return:
-    """
-    def get_model(plans):
-        plans = json.loads(plans)
-        res = {}
-        if plans:
-            for sn, plan in enumerate(plans):
-                res[str(sn)] = plan['transport_mode']
-        return Series(res)
-
+    deep_plan = get_plan_original_deep() #get_plan_model_sequence
+    deep_plan = deep_plan.set_index('sid')
     res_list = []
-    for plan_file in ['train_plans.csv', 'test_plans.csv']:
-        original_plan = get_original(plan_file)
-        original_plan = original_plan.set_index(['sid'])
-        del original_plan['plan_time']
+    #res_list.append(deep_plan.dummy_sid)
+    for i in range(12):
+        recomm_mode = deep_plan.loc[deep_plan.sn==i, 'transport_mode' ].to_frame()
+        #print(type(recomm_mode))
+        recomm_mode.rename({'transport_mode':f'o_seq_{i}'}, inplace = True, axis=1)
+        if recomm_mode.iloc[:,-1].sum()==0 :
+            logger.info(f'No sid have more than {i} plan')
+            break
+        logger.info(f'recomm_mode shape:{recomm_mode.shape}')
+        res_list.append(recomm_mode)
 
-        model_seq = original_plan.plans.apply(lambda item: get_model(item))
-
-        model_seq.columns = [f'o_seq_{item}' for item in  model_seq.columns]
-
-        model_seq = model_seq.fillna(0)
-
-        res_list.append(model_seq.astype(int) )
-
-    return pd.concat(res_list)
+    return pd.concat(res_list, axis=1)
 
 @file_cache()
-def get_plan_mini(model=1, plan_file='test_plans.csv', ):
+def get_plan_mini(model):
     """
     split the jasn to 11 model group
     :param plan_file:
     :param model:
     :return:
     """
-    original_plan = get_original(plan_file)
-    def get_model(plans, model):
-        plans = json.loads(plans)
-        if plans:
-            for sn, plan in enumerate(plans):
-                if plan['transport_mode'] == model:
-                    #plan['order'] = sn
-                    if plan['price'] is None or len(str(plan['price'])) == 0:
-                        plan['price'] = 0
-                    return Series(plan).astype(int)
-        return Series()
 
-    # model=1
-    sigle_model = original_plan.plans.apply(lambda item: get_model(item, model))
+    deep_plan= get_plan_original_deep() #get_plan_mini
+
+    sigle_model = deep_plan.loc[deep_plan.transport_mode==model]#.copy()
+    old_len = len(sigle_model)
+    sigle_model = sigle_model.drop_duplicates('sid')
+
+    logger.warning(f'There are {old_len - len(sigle_model)} records were remove from {old_len} for mode:{model}')
 
     sigle_model['price'] = sigle_model['price'].fillna(0)  # .astype(float)
 
-    sigle_model = sigle_model.fillna(0).astype(int)
+    sigle_model = sigle_model.fillna(0).astype(int)#.set_index('dummy_sid')
 
-
-    if 'distance' not in sigle_model.columns:
-        logger.warning(f'No plan is found for model:{model}')
-        return pd.DataFrame()
-    col_list = plan_items
-
-    mini_plan = original_plan.loc[:, ['sid']]
-
-    mini_plan[col_list] = sigle_model[col_list]
-
-    mini_plan = mini_plan.set_index(['sid'])
+    mini_plan = sigle_model.loc[:, plan_items]
 
     mini_plan['pe_eta_price'] = mini_plan['eta']/mini_plan['price']
     mini_plan['pe_dis_price'] = mini_plan['distance']/mini_plan['price']
@@ -127,8 +99,12 @@ def get_plan_mini(model=1, plan_file='test_plans.csv', ):
 
     #mini_plan['transport_mode'] = mini_plan['transport_mode']//model
 
-    mini_plan.columns = [[str(model)] * len(mini_plan.columns), mini_plan.columns]
-    return mini_plan
+    mini_plan['sid']       = sigle_model.sid
+    #mini_plan['dummy_sid'] = sigle_model.dummy_sid
+
+    mini_plan = mini_plan.set_index('sid')
+
+    return mini_plan.add_prefix(f'{model}_')
 
 
 @lru_cache()
@@ -227,11 +203,11 @@ def get_plan_percentage():
     plan = get_plan_original_wide()
     res_list = []
     for item in plan_items_mini:
-        col_list = [col for col in plan.columns if col[1] == item]
+        col_list = [col for col in plan.columns if col.endswith(item)]
         plan_percent = plan.loc[:, col_list].copy()
         total = plan_percent.max(axis=1)
         for col in plan_percent:
-            plan_percent[(str(col[0]), f'{col[1]}_max_p')] = round(plan_percent[col] / total, 4)
+            plan_percent[f'{col}_max_p'] = round(plan_percent[col] / total, 4)
             del plan_percent[col]
 
         res_list.append(plan_percent)
@@ -341,44 +317,51 @@ def get_plan_original_deep():
     plan_list = []
     for plan_file in ['train_plans.csv', 'test_plans.csv']:
         original_plan = get_original(plan_file)
-        for sn, row in tqdm(original_plan.iterrows(), f'convert {plan_file}'):
+        for index_sn, row in original_plan.iterrows():
             plans = json.loads(row.plans)
+            plan_sn = 0
+            mode_list = []
             for single_plan in plans:
+                cur_mode = single_plan['transport_mode']
+                #if cur_mode not in mode_list:
+                mode_list.append(cur_mode)
+                single_plan['sn'] = plan_sn
+                plan_sn += 1
                 single_plan['sid'] = row.sid
                 plan_list.append(single_plan)
+                # else:
+                #     logger.info(f'Already have mode:{cur_mode} for sid:{row.sid}')
     res = pd.DataFrame(plan_list)
     return res.fillna('0').replace({'':'0'}).astype(int)
 
 
-
-@timed()
 #@lru_cache()
 @file_cache()
 def get_plan_original_wide():
     res_list = []
+    base_list = []
     for file in ['train_plans.csv', 'test_plans.csv']:
         base = get_original(file)
-        base = base.set_index(['sid'])
-        #del base['plan_time']
-        from multiprocessing import Pool as ThreadPool  # 进程
-        from functools import partial
-        get_plan_mini_ex = partial(get_plan_mini, plan_file= file)
+        base_list.append(base)
+    base = pd.concat(base_list)
+    from multiprocessing import Pool as ThreadPool  # 进程
+    from functools import partial
 
-        pool = ThreadPool(6)
-        plan_list = pool.map(get_plan_mini_ex, tqdm(range(1, 12)), chunksize=1)
+    #Initial
+    get_plan_original_deep()
 
-        # if wide:
-        plan_list.append(base)
+    #get_plan_mini_ex = partial(get_plan_mini)
 
-        plan_part = pd.concat(plan_list, axis=1)
-        res_list.append(plan_part)
-        # else:
-        #     for df in tqdm(plan_list):
-        #         df.columns = df.columns.droplevel(0)
-        #         df = df.loc[df.transport_mode>0]
-        #         res_list.append(df)
+    pool = ThreadPool(6)
+    plan_list = pool.map(get_plan_mini, tqdm(range(1, 12)), chunksize=1,)
 
-    return pd.concat(res_list, axis=0)
+
+    plan_part = pd.concat(plan_list, axis=1)
+
+    plan_part = plan_part.reset_index()
+
+    plan_part = pd.merge(base, plan_part, on='sid')
+    return plan_part.set_index('sid')
 
 
 
@@ -433,6 +416,7 @@ def get_plan_stati_feature_sid():
     res_list = []
 
     plans = get_plan_original_deep() #get_plan_stati_feature_sid
+    plans = plans.drop_duplicates(['sid', 'transport_mode'])
 
     for col in plan_items_mini:
         tmp = plans.groupby('sid')[col].agg(['min', 'max', 'mean', 'std']).add_prefix(f'ps_{col}_')
@@ -458,6 +442,7 @@ def get_stati_feature_pid():
     query_mini = query.loc[:, ['pid', 'sid']]
 
     plans = get_plan_original_deep() #get_stati_feature_pid
+    plans = plans.drop_duplicates(['sid', 'transport_mode'])
     plans = pd.merge(plans, query_mini, how='left', on='sid')
 
     pid_mode = plans.groupby('pid').transport_mode.agg(
@@ -847,7 +832,7 @@ def remove_col(train, drop_list):
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
                    'day', 'plan_time', 'sphere_dis', 'en_label', 'time_gap',
-                   #'10_eta',
+                   '10_eta',
 
                    # 's_pid_o_hash_m_per', 's_pid_d_hash_m_per',
                    ]
