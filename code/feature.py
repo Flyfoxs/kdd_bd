@@ -49,6 +49,23 @@ def merge_raw_data():
     return data
 
 
+def merge_split_data():
+    te_queries = pd.read_csv('../data/test_queries.csv')
+    te_plans = pd.read_csv('../data/test_plans.csv')
+
+    te_data = te_queries.merge(te_plans, on='sid', how='left')
+    te_data['click_mode'] = -1
+
+    tr_data = pd.read_csv('../data/split_data.csv')
+
+    data = pd.concat([tr_data, te_data], axis=0)
+    data = data.drop(['plan_time'], axis=1)
+    data = data.reset_index(drop=True)
+    print('total data size: {}'.format(data.shape))
+    print('raw data columns: {}'.format(', '.join(data.columns)))
+    return data
+
+
 def gen_od_feas(data):
     data['o1'] = data['o'].apply(lambda x: float(x.split(',')[0]))
     data['o2'] = data['o'].apply(lambda x: float(x.split(',')[1]))
@@ -295,148 +312,6 @@ def distance(data):
     data['distance'] = distance_list
     return data
 
-def time_groupby_proccess(data):
-    from scipy.stats import skew,kurtosis
-    data['plans'].fillna(0)
-
-    #时段内最多o和d之间distance and arctan 的mean max min skew kur
-    hour_list  = []
-    weekday_list = []
-
-    distance_mean = []
-    distance_max = []
-    distance_min = []
-    distance_std = []
-    distance_kur = []
-    distance_skew = []
-
-    arctan_mean = []
-    arctan_max = []
-    arctan_min = []
-    arctan_std = []
-    arctan_kur = []
-    arctan_skew = []
-    for index,value in tqdm(data.groupby(['weekday','hour'])):
-        hour_list.append(index[1])
-        weekday_list.append(index[0])
-
-
-        distance_list = []
-        arctan_list = []
-        for i in range(len(value)):
-            distance_list.append(Dummy_MahaDis(eval(data['o'][i])[0],
-                                               eval(data['o'][i])[1],
-                                               eval(data['d'][i])[0],
-                                               eval(data['d'][i])[1]))
-            arctan_list.append(bearing_array(eval(data['o'][i])[0],
-                                               eval(data['o'][i])[1],
-                                               eval(data['d'][i])[0],
-                                               eval(data['d'][i])[1]))
-        distance_mean.append(np.mean(distance_list))
-        distance_max.append(np.max(distance_list))
-        distance_min.append(np.min(distance_list))
-        distance_std.append(np.std(distance_list))
-        distance_skew.append(skew(distance_list))
-        distance_kur.append(kurtosis(distance_list))
-
-        arctan_mean.append(np.mean(arctan_list))
-        arctan_max.append(np.max(arctan_list))
-        arctan_min.append(np.min(arctan_list))
-        arctan_std.append(np.std(arctan_list))
-        arctan_skew.append(skew(arctan_list))
-        arctan_kur.append(kurtosis(arctan_list))
-
-    temp_data = pd.DataFrame({
-        'hour':hour_list,
-        'weekday':weekday_list,
-        'distance_mean':distance_mean,
-        'distance_max':distance_max,
-        'distance_min':distance_min,
-        'distance_std':distance_std,
-        'distance_kur':distance_kur,
-        'distance_skew':distance_skew,
-        'arctan_mean':arctan_mean,
-        'arctan_max':arctan_max,
-        'arctan_min':arctan_min,
-        'arctan_std':arctan_std,
-        'arctan_skew':arctan_skew,
-        'arctan_kur':arctan_kur,
-    })
-    data = pd.merge(data,temp_data,on=['hour','weekday'],how='left')
-    return data
-
-
-
-def multi_mode(data):
-
-    mode_same_number = []
-    mode_same = []
-    first_mode_num = []
-    first_mode_list = []
-    for plan_val in data['plans'].values:
-        try:
-            temp_list = [value['transport_mode'] for value in eval(plan_val)]
-            first_mode = temp_list[0]
-
-            temp_dict = dict(Counter(temp_list))
-
-            num_dict = {index: value for index, value in temp_dict.items() if value > 1}
-            mode_same_number.append(len(num_dict))
-
-            if len(num_dict) == 0:
-                mode_same.append(first_mode)
-            else:
-                mode_same.append(list(num_dict.keys())[0])
-
-            if first_mode in num_dict and num_dict[first_mode] > 1:
-                first_mode_num.append(num_dict[first_mode])
-                first_mode_list.append(1)
-            else:
-                first_mode_num.append(0)
-                first_mode_list.append(0)
-
-        except:
-            mode_same_number.append(0)
-            mode_same.append(-1)
-            first_mode_num.append(-1)
-            first_mode_list.append(-1)
-
-    df = pd.DataFrame({
-        'mode_same_number': mode_same_number,
-        'mode_same': mode_same,
-        'first_mode_num': first_mode_num,
-        'first_mode_list': first_mode_list,
-
-    })
-    data = pd.concat([data,df],axis=1)
-    return data
-
-
-from sklearn.decomposition import NMF
-def mode_tfidf_nmf(data):
-
-    mode_list = []
-    for plan_val in data['plans'].values:
-        temp_str = ''
-        try:
-            for value in eval(plan_val):
-                temp_str += 'mode{}'.format(str(value['transport_mode']))
-                temp_str += " "
-        except:
-            temp_str += '0'
-        mode_list.append(temp_str)
-
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    tfidf_model = TfidfVectorizer(ngram_range=(1,2)).fit(mode_list)
-    sparse_result = tfidf_model.transform(mode_list)
-    dim = 10
-    nmf = NMF(n_components=dim, init='random', random_state=0)
-    nmf_mode = nmf.fit_transform(sparse_result)
-    nmf_mode = pd.DataFrame(nmf_mode, columns=["nmf_mode_%d" % i for i in range(dim)])
-    data = pd.concat([data,nmf_mode],axis=1)
-    return data
-
-
 
 #按时间段分段统计
 def mode_tfidf(data):
@@ -462,12 +337,6 @@ def mode_tfidf(data):
     mode_svd['sid'] = sid
     return mode_svd
 
-def groupby_time(data):
-    temp_data = pd.DataFrame()
-    for index,value in data.groupby(['hour','weekday']):
-        temp_data = pd.concat([temp_data,mode_tfidf(value)],axis=0,ignore_index=True)
-    data = pd.merge(data,temp_data,on=['sid'],how='left')
-    return data
 
 
 
@@ -538,359 +407,159 @@ def mode_speed_svd(data):
     data = pd.concat([data,temp_df],axis=1)
     return data
 
-def mode_price_svd(data):
-    mode_price_list = []
+def rank_one_distance(data):
+    distance_list = []
     for value in data['plans'].values:
-        temp_dict = {}
         try:
-            value = eval(value)
-            for index in value:
-                if index['price'] != '':
-                    temp_dict[index['transport_mode']] = int(index['price'])
-                else:
-                    temp_dict[index['transport_mode']] = 1
+            distance_list.append(eval(value)[0]['distance'])
         except:
-            None
-        mode_price_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_price_list)
-    temp_df.columns = ['mode_price_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0,inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    mode_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(mode_svd)
-    temp_df.columns = ['mode_price_svd_{}'.format(index) for index in range(10)]
-    data = pd.concat([data,temp_df],axis=1)
+            distance_list.append(0)
+    data['rank_distance'] = distance_list
+    return data
+
+def rank_one_eta(data):
+    eta_list = []
+    for value in data['plans'].values:
+        try:
+            eta_list.append(eval(value)[0]['eta'])
+        except:
+            eta_list.append(0)
+    data['rank_eta'] = eta_list
+    return data
+
+def rank_one_price(data):
+    price_list = []
+    for value in data['plans'].values:
+        try:
+            if eval(value)[0]['price'] == '':
+                price_list.append(1)
+            else:
+                price_list.append(int(eval(value)[0]['price']))
+        except:
+            price_list.append(0)
+    data['rank_price'] = price_list
+    return data
+
+def rank_div(data):
+    data['distance_div_price'] = data['rank_distance'] / data['rank_price']
+    data['eta_div_price'] = data['rank_eta'] / data['rank_price']
+    return data
+
+def rank_distance_sub(data):
+    distance_sub_max = []
+    distance_sub_mean = []
+    distance_sub_median = []
+    distance_sub_min = []
+    distance_sub_quanti = []
+    distance_sub_sum = []
+    for value in data['plans'].values:
+        try:
+            distance = eval(value)[0]['distance']
+            temp_distance_list = [val['distance'] for val in eval(value)]
+            distance_sub_max.append(distance - np.max(temp_distance_list))
+            distance_sub_mean.append(distance - np.mean(temp_distance_list))
+            distance_sub_median.append(distance - np.median(temp_distance_list))
+            distance_sub_min.append(distance - np.min(temp_distance_list))
+            distance_sub_quanti.append(distance - np.percentile(temp_distance_list,q=75))
+            distance_sub_sum.append(distance/np.sum(temp_distance_list))
+        except:
+            distance_sub_max.append(0)
+            distance_sub_mean.append(0)
+            distance_sub_median.append(0)
+            distance_sub_min.append(0)
+            distance_sub_quanti.append(0)
+            distance_sub_sum.append(0)
+
+    data['distance_sub_max'] = distance_sub_max
+    data['distance_sub_mean'] = distance_sub_mean
+    data['distance_sub_median'] = distance_sub_median
+    data['distance_sub_min'] = distance_sub_min
+    data['distance_sub_quanti'] = distance_sub_quanti
+    data['distance_sub_sum'] = distance_sub_sum
     return data
 
 
-def groupby_time_mode_price_svd(data):
-    mode_price_list = []
-    sid = data[['sid']]
+def rank_eta_sub(data):
+    eta_sub_max = []
+    eta_sub_mean = []
+    eta_sub_median = []
+    eta_sub_min = []
+    eta_sub_quanti = []
+    eta_sub_sum = []
     for value in data['plans'].values:
-        temp_dict = {}
         try:
-            value = eval(value)
-            for index in value:
-                if index['price'] != '':
-                    temp_dict[index['transport_mode']] = int(index['price'])
-                else:
-                    temp_dict[index['transport_mode']] = 1
+            eta = eval(value)[0]['eta']
+            temp_eta_list = [val['eta'] for val in eval(value)]
+            eta_sub_max.append(eta - np.max(temp_eta_list))
+            eta_sub_mean.append(eta - np.mean(temp_eta_list))
+            eta_sub_median.append(eta - np.median(temp_eta_list))
+            eta_sub_min.append(eta - np.min(temp_eta_list))
+            eta_sub_quanti.append(eta - np.percentile(temp_eta_list,q=75))
+            eta_sub_sum.append(eta/np.sum(temp_eta_list))
         except:
-            None
-        mode_price_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_price_list)
-    temp_df.columns = ['mode_price_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0,inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    mode_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(mode_svd)
-    temp_df.columns = ['svd_price_time_groupby_{}'.format(index) for index in range(10)]
-    temp_df['sid'] = sid
-    return temp_df
+            eta_sub_max.append(0)
+            eta_sub_mean.append(0)
+            eta_sub_median.append(0)
+            eta_sub_min.append(0)
+            eta_sub_quanti.append(0)
+            eta_sub_sum.append(0)
 
-def groupby_time_price(data):
-    temp_data = pd.DataFrame()
-    for index,value in data.groupby(['hour','weekday']):
-        temp_data = pd.concat([temp_data,groupby_time_mode_price_svd(value)],axis=0,ignore_index=True)
-    data = pd.merge(data,temp_data,on=['sid'],how='left')
-    return data
-
-
-def mode_d2v_svd(data):
-    d2v_mode = pd.read_csv('../pre_data/mode_d2v.csv')
-    sid = d2v_mode[['sid']]
-    d2v_mode.drop('sid',axis=1,inplace=True)
-    d2v_mode = d2v_mode.values
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    d2v_mode = svd_enc.fit_transform(d2v_mode)
-    d2v_mode = pd.DataFrame(d2v_mode)
-    d2v_mode.columns = ['mode_d2v_svd_{}'.format(index) for index in range(10)]
-    d2v_mode['sid'] = sid['sid']
-    data = pd.merge(data,d2v_mode,on=['sid'],how='left')
-    return data
-
-
-def price_d2v_svd(data):
-    d2v_mode = pd.read_csv('../pre_data/price_d2v.csv')
-    sid = d2v_mode[['sid']]
-    d2v_mode.drop('sid',axis=1,inplace=True)
-    d2v_mode = d2v_mode.values
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    d2v_mode = svd_enc.fit_transform(d2v_mode)
-    d2v_mode = pd.DataFrame(d2v_mode)
-    d2v_mode.columns = ['price_d2v_svd_{}'.format(index) for index in range(10)]
-    d2v_mode['sid'] = sid['sid']
-    data = pd.merge(data,d2v_mode,on=['sid'],how='left')
-    return data
-
-
-
-# mode-price matrix
-def groupby_weekday_mode_price_svd(data):
-    mode_price_list = []
-    sid = data[['sid']]
-    for value in data['plans'].values:
-        temp_dict = {}
-        try:
-            value = eval(value)
-            for index in value:
-                if index['price'] != '':
-                    temp_dict[index['transport_mode']] = int(index['price'])
-                else:
-                    temp_dict[index['transport_mode']] = 1
-        except:
-            None
-        mode_price_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_price_list)
-    temp_df.columns = ['mode_price_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0,inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    mode_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(mode_svd)
-    temp_df.columns = ['weekday_mode_price_svd_{}'.format(index) for index in range(10)]
-    sid = pd.concat([sid, temp_df], axis=1)
-    return sid
-
-
-def groupby_weekday_price(data):
-    temp_data = pd.DataFrame()
-    for index, value in data.groupby(['weekday']):
-        temp_data = pd.concat([temp_data, groupby_weekday_mode_price_svd(value)], axis=0, ignore_index=True)
-    data = pd.merge(data,temp_data,on='sid',how='left')
-    return data
-
-
-def groupby_hour_mode_price_svd(data):
-    mode_price_list = []
-    sid = data[['sid']]
-    for value in data['plans'].values:
-        temp_dict = {}
-        try:
-            value = eval(value)
-            for index in value:
-                if index['price'] != '':
-                    temp_dict[index['transport_mode']] = int(index['price'])
-                else:
-                    temp_dict[index['transport_mode']] = 1
-        except:
-            None
-        mode_price_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_price_list)
-    temp_df.columns = ['mode_price_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0,inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    mode_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(mode_svd)
-    temp_df.columns = ['hour_mode_price_svd_{}'.format(index) for index in range(10)]
-    sid = pd.concat([sid, temp_df], axis=1)
-    return sid
-
-
-#def groupby_hour_price(data):
-#    temp_data = pd.DataFrame()
-#    for index, value in data.groupby(['hour']):
-#        temp_data = pd.concat([temp_data, groupby_hour_mode_price_svd(value)], axis=0, ignore_index=True)
-#    data = pd.merge(data,temp_data,on='sid',how='left')
-#    return data
-
-
-
-# mode-distacne matrix
-def groupby_hour_mode_distance_svd(data):
-    mode_distance_list = []
-    sid = data[['sid']]
-    for value in data['plans'].values:
-        temp_dict = {}
-        try:
-            value = eval(value)
-            for index in value:
-                temp_dict[index['transport_mode']] = int(index['distance'])
-        except:
-            None
-        mode_distance_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_distance_list)
-    temp_df.columns = ['mode_distance_svd_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0, inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    distance_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(distance_svd)
-    temp_df.columns = ['hour_mode_distance_svd_{}'.format(index) for index in range(10)]
-    sid = pd.concat([sid, temp_df], axis=1)
-    return sid
-
-#def groupby_hour_distance(data):
-#    temp_data = pd.DataFrame()
-#    for index, value in data.groupby(['hour']):
-#        temp_data = pd.concat([temp_data, groupby_hour_mode_distance_svd(value)], axis=0, ignore_index=True)
-#    data = pd.merge(data,temp_data,on='sid',how='left')
-#    return data
-
-
-
-def groupby_weekday_mode_distance_svd(data):
-    mode_distance_list = []
-    sid = data[['sid']]
-    for value in data['plans'].values:
-        temp_dict = {}
-        try:
-            value = eval(value)
-            for index in value:
-                temp_dict[index['transport_mode']] = int(index['distance'])
-        except:
-            None
-        mode_distance_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_distance_list)
-    temp_df.columns = ['mode_distance_svd_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0, inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    distance_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(distance_svd)
-    temp_df.columns = ['weekday_mode_distance_svd_{}'.format(index) for index in range(10)]
-    sid = pd.concat([sid, temp_df], axis=1)
-    return sid
-
-def groupby_weekday_distance(data):
-    temp_data = pd.DataFrame()
-    for index, value in data.groupby(['weekday']):
-        temp_data = pd.concat([temp_data, groupby_weekday_mode_distance_svd(value)], axis=0, ignore_index=True)
-    data = pd.merge(data,temp_data,on='sid',how='left')
-    return data
-
-
-# mode-eta matrix
-def groupby_hour_mode_eta_svd(data):
-    mode_eta_list = []
-    sid = data[['sid']]
-    for value in data['plans'].values:
-        temp_dict = {}
-        try:
-            value = eval(value)
-            for index in value:
-                temp_dict[index['transport_mode']] = int(index['eta'])
-        except:
-            None
-        mode_eta_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_eta_list)
-    temp_df.columns = ['mode_eta_svd_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0, inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    eta_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(eta_svd)
-    temp_df.columns = ['hour_mode_eta_svd_{}'.format(index) for index in range(10)]
-    sid = pd.concat([sid, temp_df], axis=1)
-    return sid
-
-#def groupby_hour_eta(data):
-#    temp_data = pd.DataFrame()
-#   for index, value in data.groupby(['hour']):
-#       temp_data = pd.concat([temp_data, groupby_hour_mode_eta_svd(value)], axis=0, ignore_index=True)
-#    data = pd.merge(data,temp_data,on='sid',how='left')
-#    return data
-
-
-# mode-eta matrix
-def groupby_weekday_mode_eta_svd(data):
-    mode_eta_list = []
-    sid = data[['sid']]
-    for value in data['plans'].values:
-        temp_dict = {}
-        try:
-            value = eval(value)
-            for index in value:
-                temp_dict[index['transport_mode']] = int(index['eta'])
-        except:
-            None
-        mode_eta_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_eta_list)
-    temp_df.columns = ['mode_eta_svd_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0, inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    eta_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(eta_svd)
-    temp_df.columns = ['weekday_mode_eta_svd_{}'.format(index) for index in range(10)]
-    sid = pd.concat([sid, temp_df], axis=1)
-    return sid
-
-def groupby_weekday_eta(data):
-    temp_data = pd.DataFrame()
-    for index, value in data.groupby(['weekday']):
-        temp_data = pd.concat([temp_data, groupby_weekday_mode_eta_svd(value)], axis=0, ignore_index=True)
-    data = pd.merge(data,temp_data,on='sid',how='left')
+    data['eta_sub_max'] = eta_sub_max
+    data['eta_sub_mean'] = eta_sub_mean
+    data['eta_sub_median'] = eta_sub_median
+    data['eta_sub_min'] = eta_sub_min
+    data['eta_sub_quanti'] = eta_sub_quanti
+    data['eta_sub_sum'] = eta_sub_sum
     return data
 
 
 
-# mode-distacne matrix
-def groupby_hour_mode_speed_svd(data):
-    mode_speed_list = []
-    sid = data[['sid']]
+def rank_price_sub(data):
+    price_sub_max = []
+    price_sub_mean = []
+    price_sub_median = []
+    price_sub_min = []
+    price_sub_quanti = []
+    price_sub_sum = []
     for value in data['plans'].values:
-        temp_dict = {}
         try:
-            value = eval(value)
-            for index in value:
-                temp_dict[index['transport_mode']] = int(index['distance'])/float(index['eta'])
+            temp_price_list = [int(val['price']) if eval(val)[0]['price'] != '' else 1 for val in eval(value)]
+            price = temp_price_list[0]
+            price_sub_max.append(price - np.max(temp_price_list))
+            price_sub_mean.append(price - np.mean(temp_price_list))
+            price_sub_median.append(price - np.median(temp_price_list))
+            price_sub_min.append(price - np.min(temp_price_list))
+            price_sub_quanti.append(price - np.percentile(temp_price_list,q=75))
+            price_sub_sum.append(price/np.sum(temp_price_list))
         except:
-            None
-        mode_speed_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_speed_list)
-    temp_df.columns = ['mode_speed_svd_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0, inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    speed_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(speed_svd)
-    temp_df.columns = ['hour_mode_speed_svd_{}'.format(index) for index in range(10)]
-    sid = pd.concat([sid,temp_df],axis=1)
-    return sid
+            price_sub_max.append(0)
+            price_sub_mean.append(0)
+            price_sub_median.append(0)
+            price_sub_min.append(0)
+            price_sub_quanti.append(0)
+            price_sub_sum.append(0)
 
-#def groupby_hour_speed(data):
-#    temp_data = pd.DataFrame()
-#    for index, value in data.groupby(['hour']):
-#        temp_data = pd.concat([temp_data, groupby_hour_mode_speed_svd(value)], axis=0, ignore_index=True)
-#    data = pd.merge(data,temp_data,on='sid',how='left')
-#    return data
-
-
-# mode-distacne matrix
-def groupby_weekday_mode_speed_svd(data):
-    mode_speed_list = []
-    sid = data[['sid']]
-    for value in data['plans'].values:
-        temp_dict = {}
-        try:
-            value = eval(value)
-            for index in value:
-                temp_dict[index['transport_mode']] = int(index['distance'])/float(index['eta'])
-        except:
-            None
-        mode_speed_list.append(temp_dict)
-    temp_df = pd.DataFrame(mode_speed_list)
-    temp_df.columns = ['mode_speed_svd_{}'.format(index) for index in range(11)]
-    temp_df.fillna(0, inplace=True)
-    svd_enc = TruncatedSVD(n_components=10, n_iter=20, random_state=2019)
-    speed_svd = svd_enc.fit_transform(temp_df.values)
-    temp_df = pd.DataFrame(speed_svd)
-    temp_df.columns = ['weekday_mode_speed_svd_{}'.format(index) for index in range(10)]
-    sid = pd.concat([sid,temp_df],axis=1)
-    return sid
-
-def groupby_weekday_speed(data):
-    temp_data = pd.DataFrame()
-    for index, value in data.groupby(['weekday']):
-       temp_data = pd.concat([temp_data, groupby_weekday_mode_speed_svd(value)], axis=0, ignore_index=True)
-    data = pd.merge(data,temp_data,on='sid',how='left')
+    data['price_sub_max'] = price_sub_max
+    data['price_sub_mean'] = price_sub_mean
+    data['price_sub_median'] = price_sub_median
+    data['price_sub_min'] = price_sub_min
+    data['price_sub_quanti'] = price_sub_quanti
+    data['price_sub_sum'] = price_sub_sum
     return data
+
+
 
 
 def get_train_test_feas_data():
-    data = merge_raw_data()
+    # data = merge_raw_data()
+    data = merge_split_data()
 
     data = gen_od_feas(data)
     data = gen_plan_feas(data)
     data = gen_profile_feas(data)
     data = gen_time_feas(data)
 
-    data = plan_mode_matrix(data)
+    # data = plan_mode_matrix(data)
     data = arctan(data)
     data = distance(data)
     data = plan_speed_matrix(data)
@@ -898,28 +567,16 @@ def get_train_test_feas_data():
     data = mode_distance_svd(data)
     data = mode_eta_svd(data)
     data = mode_speed_svd(data)
-    # data = mode_price_svd(data)
-
-    data = groupby_weekday_speed(data)
-    data = groupby_weekday_distance(data)
-    data = groupby_weekday_eta(data)
-    data = groupby_weekday_price(data)
-
-    #data = groupby_hour_speed(data)
-    #data = groupby_hour_distance(data)
-    #data = groupby_hour_eta(data)
-    #data = groupby_hour_price(data)
-
-    # data = groupby_time(data)
-    # data = mode_d2v_svd(data)
-    # data = price_d2v_svd(data)
 
 
-    # data = groupby_time_price(data)
+    data = rank_one_distance(data)
+    data = rank_one_eta(data)
+    data = rank_one_price(data)
+    data = rank_div(data)
+    data = rank_distance_sub(data)
+    data = rank_eta_sub(data)
+    data = rank_price_sub(data)
 
-    # data = multi_mode(data)
-    # data = mode_tfidf_nmf(data)
-    # data = time_groupby_proccess(data)
 
     data = data.drop(['o', 'd'], axis=1)
     data = data.drop(['plans'], axis=1)
