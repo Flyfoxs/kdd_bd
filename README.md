@@ -2,6 +2,12 @@
 
 # Features
 
+
+## commit -3
+
+做了一些geohash 特征。分数从6953 提升到了6968
+采样比0.5
+
 ## commit -2
 
 围绕rank做了一些特征
