@@ -87,7 +87,9 @@ def get_plan_mini(model):
 
     sigle_model = sigle_model.fillna(0).astype(int)#.set_index('dummy_sid')
 
-    mini_plan = sigle_model.loc[:, plan_items]
+    mini_plan = sigle_model.loc[:, plan_items + plan_rank]
+
+
 
     mini_plan['pe_eta_price'] = mini_plan['eta']/mini_plan['price']
     mini_plan['pe_dis_price'] = mini_plan['distance']/mini_plan['price']
@@ -203,7 +205,8 @@ def get_plan_percentage():
     plan = get_plan_original_wide()
     res_list = []
     for item in plan_items_mini:
-        col_list = [col for col in plan.columns if col.endswith(item)]
+        select_col = [ f'{i}_{item}' for i in range(12)]
+        col_list = [col for col in plan.columns if col in select_col]
         plan_percent = plan.loc[:, col_list].copy()
         total = plan_percent.max(axis=1)
         for col in plan_percent:
@@ -323,16 +326,24 @@ def get_plan_original_deep():
             mode_list = []
             for single_plan in plans:
                 cur_mode = single_plan['transport_mode']
-                #if cur_mode not in mode_list:
-                mode_list.append(cur_mode)
-                single_plan['sn'] = plan_sn
-                plan_sn += 1
-                single_plan['sid'] = row.sid
-                plan_list.append(single_plan)
+                if True or cur_mode not in mode_list:
+                    mode_list.append(cur_mode)
+                    single_plan['sn'] = plan_sn
+                    plan_sn += 1
+                    single_plan['sid'] = row.sid
+                    plan_list.append(single_plan)
                 # else:
                 #     logger.info(f'Already have mode:{cur_mode} for sid:{row.sid}')
     res = pd.DataFrame(plan_list)
-    return res.fillna('0').replace({'':'0'}).astype(int)
+    res = res.fillna('0').replace({'':'0'}).astype(int)
+
+    res['price_rank'] = res[['sid', 'price']].groupby(['sid'])['price'].rank(method='min')
+    res['distance_rank'] = res[['sid', 'distance']].groupby(['sid'])['distance'].rank(method='min')
+    res['eta_rank'] = res[['sid', 'eta']].groupby(['sid'])['eta'].rank(method='min')
+
+    return res
+
+
 
 
 #@lru_cache()
@@ -827,16 +838,31 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list,mode_list=[])
     return train_x, train_y, val_x, val_y, X_test
 
 
+@lru_cache()
+def get_drop_list_std(thres_hold=0):
+    feature = get_feature()
+    tmp = feature.describe().T
+    tmp = tmp.loc[tmp['std'] <= thres_hold].sort_values('std')
+
+    std_drop = list(tmp.index.values)
+    logger.info(f'Base on {thres_hold}, get drop list:{len(std_drop)},{std_drop}')
+    return std_drop
+
 def remove_col(train, drop_list):
     # Drop begin
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
                    'day', 'plan_time', 'sphere_dis', 'en_label', 'time_gap',
-                   '10_eta',
+                   #'10_eta',
 
                    # 's_pid_o_hash_m_per', 's_pid_d_hash_m_per',
                    ]
     remove_list.extend(drop_list)
+
+    #remove_list.extend(get_drop_list_std(0.02))
+
+    remove_list.extend([col for col in train.columns if col.endswith('_rank')])
+
     remove_list.extend([col for col in train.columns if col.startswith('s_')])
     # pe_eta_price and so on
     remove_list.extend([col for col in train.columns if '_pe_' in col])
@@ -844,13 +870,13 @@ def remove_col(train, drop_list):
     # remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
     logger.info(f'Final remove list:{remove_list}')
     train = train.drop(remove_list, axis=1, errors='ignore')
-    return train
+    return train#.loc[:, [item for item in col_order if item in train.columns ] ]
 
 
 if __name__ == '__main__':
     get_plan_original_deep() # main
     get_plan_original_wide()
-    # get_feature()
+    get_feature()
     """
     nohup python -u  core/feature.py   > feature.log  2>&1 &
     """

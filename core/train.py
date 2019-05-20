@@ -381,9 +381,9 @@ nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
 
 #nohup python -u  core/train.py train_ex > 2019_base_0.69366536.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_18_189.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_20.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > test_2.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_order_v2.log 2>&1 &
 
 nohup python -u  core/train.py train_ex  {} 4_eta_max_p,1_distance_max_p,d_hash_6 > drop_test.log 2>&1 &
 

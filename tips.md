@@ -24,3 +24,10 @@ Train数据
 rank base on deep
 
 enhance search dynamcic parameter
+
+
+
+
+order+model,cat
+day,
+hour,
