@@ -811,7 +811,7 @@ def groupby_geohash_mode(data):
     data['_eta_div_price'] = data['first_eta'] / data['first_price']
     data['_price_div_eta'] = data['first_price'] / data['first_eta']
 
-    for index in [4, 5, 6]:
+    for index in [4, 5, 6, 7, 8]:
 
         data = hash_processing(data,index=index)
         temp_data = data.groupby(['_o_hash_{}'.format(index),'first_mode']).size().reset_index().rename(columns={0:'count_mode_hash_{}'.format(index)})

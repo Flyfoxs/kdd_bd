@@ -2,6 +2,9 @@
 
 # Features
 
+## commit -4 
+
+修改了一下对geohash的细粒度， 提升到了0.69855
 
 ## commit -3
 
