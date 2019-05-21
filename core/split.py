@@ -30,6 +30,9 @@ class manual_split:
         feature = feature.reset_index()
 
         folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
+
+        logger.info(f'split_sk:{feature.shape}')
+        check_exception(feature)
         split_fold = folds.split(feature.values, feature.click_mode.values)
 
         return split_fold

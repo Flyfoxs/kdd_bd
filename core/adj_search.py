@@ -150,6 +150,7 @@ if __name__== '__main__':
     for input_file in [
                   # './output/stacking/L_500000_191_0.68164_0422_0730.h5',
                   # './output/stacking/L_500000_191_0.68142_0434_0730.h5',
+                    './output/stacking/L_500000_342_0.67806_0537_1178.h5',   #0.69363551
                     './output/stacking/merge.h5',
                     './output/stacking/L_500000_268_0.67818_0439_1462.h5', #0.69898001
 

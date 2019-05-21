@@ -312,7 +312,7 @@ def train_ex(args={}, drop_list='' ):
             #logger.info(f'score:{score:0.6f}, drop_col:{",".join(drop_list)}')
             feature_nums = len(feature_importance.feature.value_counts())
             if len(args) == 0 or cv == True:
-                file = f'./output/res_enhance_{cv}_{len(train_data)}_{feature_nums}_{best_iteration}_{score:6.4f}_{"_".join(drop_list)}.csv'
+                file = f'./output/res_enhance_{cv}_{len(train_data)}_{feature_nums}_{best_iteration}_{score:8.6f}_{"_".join(drop_list)}.csv'
                 res.to_csv(file)
                 gen_sub(file)
             else:
@@ -381,7 +381,7 @@ nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
 
 #nohup python -u  core/train.py train_ex > 2019_base_0.69366536.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_20.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_21.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > base_order_v2.log 2>&1 &
 

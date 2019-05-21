@@ -106,7 +106,7 @@ def get_plan_mini(model):
 
     mini_plan = mini_plan.set_index('sid')
 
-    return mini_plan.add_prefix(f'{model}_')
+    return mini_plan.add_prefix(f'{model:02}_')
 
 
 @lru_cache()
@@ -205,7 +205,7 @@ def get_plan_percentage():
     plan = get_plan_original_wide()
     res_list = []
     for item in plan_items_mini:
-        select_col = [ f'{i}_{item}' for i in range(12)]
+        select_col = [ f'{i:02}_{item}' for i in range(12)]
         col_list = [col for col in plan.columns if col in select_col]
         plan_percent = plan.loc[:, col_list].copy()
         total = plan_percent.max(axis=1)
@@ -216,8 +216,10 @@ def get_plan_percentage():
         res_list.append(plan_percent)
     res = pd.concat(res_list, axis=1)
 
+    col_list = ['01_distance_max_p', '01_eta_max_p', '01_price_max_p', '10_distance_max_p', '10_eta_max_p', '10_price_max_p', '11_distance_max_p', '11_eta_max_p', '11_price_max_p', '02_distance_max_p', '02_eta_max_p', '02_price_max_p', '03_distance_max_p', '03_eta_max_p', '03_price_max_p', '04_distance_max_p', '04_eta_max_p', '04_price_max_p', '05_distance_max_p', '05_eta_max_p', '05_price_max_p', '06_distance_max_p', '06_eta_max_p', '06_price_max_p', '07_distance_max_p', '07_eta_max_p', '07_price_max_p', '08_distance_max_p', '08_eta_max_p', '08_price_max_p', '09_distance_max_p', '09_eta_max_p', '09_price_max_p', ]
     # res.columns.set_levels([ f'{item[1]}_p' for item in res.columns ],level=1,inplace=True)
     # res.columns = [ (item[0], f'{item[1]}_p') for item in res.columns]
+    res = res.loc[:, col_list]
     res = res.sort_index(axis=1, level=1)
     return res
 
@@ -478,8 +480,8 @@ def get_geo_percentage(query, direct, gp_level=[], prefix='glb_'):
     print(gp_level)
     res_list = []
     for i in range(1, 12):
-        tmp = query.groupby(gp_level)[f'{i}_transport_mode'].agg({f'sugg_{direct}_{i}': 'sum'})
-        tmp[f'sugg_{direct}_{i}'] = tmp[f'sugg_{direct}_{i}'] // i
+        tmp = query.groupby(gp_level)[f'{i:02}_transport_mode'].agg({f'sugg_{direct}_{i:02}': 'sum'})
+        tmp[f'sugg_{direct}_{i:02}'] = tmp[f'sugg_{direct}_{i:02}'] // i
 
         res_list.append(tmp.astype(int))
 
@@ -490,7 +492,7 @@ def get_geo_percentage(query, direct, gp_level=[], prefix='glb_'):
     tmp = pd.concat(res_list, axis=1)  # .sort_values('count_appear', ascending=False).loc['wx4g0w'].sort_index()
 
     for i in range(1, 12):
-        tmp[f'sugg_{direct}_{i}_per'] = tmp[f'sugg_{direct}_{i}'] / tmp[f'count_appear_{direct}']
+        tmp[f'sugg_{direct}_{i:02}_per'] = tmp[f'sugg_{direct}_{i:02}'] / tmp[f'count_appear_{direct}']
 
     tmp = tmp.add_prefix(prefix)
     # tmp.index.name = f'{direct}_hash_{hash_precision}'
@@ -611,6 +613,22 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 #     return train_data, X_test
 #
 
+def extend_c2v_feature(c_list=['weekday' , 'hour']):
+    feature = get_feature().reset_index()
+    original_c2v = pd.read_csv('./output/c2v.txt', delimiter=' ', skiprows=1, header=None)
+
+    for col in c_list:
+        c2v = original_c2v.copy().add_prefix(f'{col}_')
+        c2v = c2v.rename({f'{col}_0': col}, axis=1)
+        feature[col] = feature[col].apply(lambda item: f'{col}={item}')
+        feature = pd.merge(feature,c2v, how='left', on=col)
+        del feature[col]
+    feature = feature.fillna(0)
+
+    return feature.set_index('sid')
+
+
+
 @timed()
 def get_train_test():
     """
@@ -618,13 +636,21 @@ def get_train_test():
     :param drop_list:
     :return:
     """
-    feature = get_feature().copy()  # .fillna(0)
+      # .fillna(0)
     # logger.info(f'Remove simple zero case:{len(feature.loc[feature.o_seq_0 == 0])}')
     # feature = feature.loc[feature.o_seq_0 > 0]
     #There 2 days only have zero mode
     #feature = feature[~feature.day.isin([8, 35])]
 
     #feature = resample_train()
+
+    feature = extend_c2v_feature().copy()
+
+    click_mode = feature.click_mode
+    del feature['click_mode']
+    feature['click_mode'] = click_mode
+
+    logger.info(check_exception(feature).head(4))
 
     for precision in [6]:
         feature[f'o_d_hash_{precision}'] = feature[f'o_d_hash_{precision}'].astype('category').cat.codes.astype(int)
@@ -871,6 +897,12 @@ def remove_col(train, drop_list):
     logger.info(f'Final remove list:{remove_list}')
     train = train.drop(remove_list, axis=1, errors='ignore')
     return train#.loc[:, [item for item in col_order if item in train.columns ] ]
+
+
+@file_cache()
+def get_cat_col():
+    fea = get_feature()
+    return fea.nunique().sort_values()
 
 
 if __name__ == '__main__':
