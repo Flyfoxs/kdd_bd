@@ -629,60 +629,23 @@ def extend_c2v_feature(c_list=['weekday' , 'hour']):
 
 
 
+
 @timed()
 def get_train_test():
-    """
-    train:500000, online:94358
-    :param drop_list:
-    :return:
-    """
-      # .fillna(0)
-    # logger.info(f'Remove simple zero case:{len(feature.loc[feature.o_seq_0 == 0])}')
-    # feature = feature.loc[feature.o_seq_0 > 0]
-    #There 2 days only have zero mode
-    #feature = feature[~feature.day.isin([8, 35])]
+    feature = get_feature().copy()
 
-    #feature = resample_train()
-
-    feature = extend_c2v_feature().copy()
+    #feature = extend_c2v_feature().copy()
 
     click_mode = feature.click_mode
     del feature['click_mode']
     feature['click_mode'] = click_mode
 
-    logger.info(check_exception(feature).head(4))
+    #logger.info(check_exception(feature).head(4))
 
     for precision in [6]:
         feature[f'o_d_hash_{precision}'] = feature[f'o_d_hash_{precision}'].astype('category').cat.codes.astype(int)
         feature[f'd_hash_{precision}'] = feature[f'd_hash_{precision}'].astype('category').cat.codes.astype(int)
         feature[f'o_hash_{precision}'] = feature[f'o_hash_{precision}'].astype('category').cat.codes.astype(int)
-
-
-    # remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
-    #                'o', 'd', 'label', 'req_time', 'click_time', 'date',
-    #                'day', 'plan_time','sphere_dis','en_label', 'time_gap',
-    #
-    #                #'s_pid_o_hash_m_per', 's_pid_d_hash_m_per',
-    #                  ]
-    #
-    # remove_list.extend(drop_list)
-    # remove_list.extend([col for col in feature.columns if col.startswith('s_')])
-    #
-    # #pe_eta_price and so on
-    # remove_list.extend([col for col in feature.columns if '_pe_' in col])
-    #
-    # remove_list.extend([col for col in feature.columns if 'ps_' in col])
-    #
-    # #remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
-    # logger.info(f'Final remove list:{remove_list}')
-    # feature = feature.drop(remove_list, axis=1, errors='ignore')
-    # #feature = feature.drop(drop_list, axis=1, errors='ignore')
-    #
-    # for col, type_ in feature.dtypes.sort_values().iteritems():
-    #     if type_ not in ['int64', 'int16', 'int32', 'float64']:
-    #         logger.error(col, type_)
-
-    #feature.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in feature.columns]
 
     train_data = feature.loc[(feature.click_mode >= 0)]
 
@@ -827,21 +790,53 @@ def get_convert_recommend(feature, gp_col = ['o_seq_0']):
     new_fea =  new_fea.add_prefix('rec_conv_'+'_'.join(gp_col)+'_')
     return new_fea.reset_index()
 
-def sample_ex(df:pd.DataFrame, frac):
-    res_list = [df]*int(frac)
-    res_list.append(df.sample(frac=frac%1, random_state=2019))
-    return pd.concat(res_list)
+@lru_cache()
+def get_resample_sid():
+    st = pd.read_hdf('./output/stacking/L_500000_334_0.67787_0845_1443.h5', 'train')
+    st['predict'] = st.iloc[:, :12].idxmax(axis=1)
+    st['correct'] =  np.abs(st.predict.astype(int) - st.click_mode.astype(int))
+
+    error = st.loc[st.correct>0]
+    error['resample'] = False
+    for label in range(12):
+        if label not in [0, 3, 4, 6, 9]:
+            tmp = error.loc[error.click_mode==label].sort_values(str(label), ascending=False)
+            cnt = len(tmp)//20
+            print(cnt)
+            error.loc[ tmp.iloc[:cnt].index, 'resample' ] =True
+
+
+    return error.loc[error['resample']==True].reset_index().sid.values
+
+
+def sample_ex(df):
+
+    print(df.click_mode.value_counts())
+    resample_list = get_resample_sid()
+    double = df.loc[df.index.isin(resample_list)]
+    logger.info(f'There are {len(double)} records are resample from {len(df)} records')
+
+    df = df.append(double)
+    print(df.click_mode.value_counts())
+    #check_exception((df))
+    return df
 
 @timed()
-def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list,mode_list=[]):
+def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list, mode_list=[]):
     val_x = df.iloc[val_idx, :-1]
     val_y = df.iloc[val_idx].click_mode
 
-    train = df.iloc[trn_idx]
+    train = df.iloc[trn_idx].copy()
+
+    # old_len = len(train)
+    # resample_list = get_resample_sid()
+    # train = train.loc[~train.index.isin(resample_list)]
+    # logger.info(f'There are {old_len - len(train)} records are remove from df#{old_len}')
+
     if mode_list:
         train = train.loc[train.click_mode.isin(mode_list)]
 
-    click_mode = train.click_mode
+    click_mode = train.click_mode.astype(int)
     del train['click_mode']
     train['click_mode'] = click_mode
 
@@ -879,6 +874,7 @@ def remove_col(train, drop_list):
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
                    'day', 'plan_time', 'sphere_dis', 'en_label', 'time_gap',
+                   'sid',
                    #'10_eta',
 
                    # 's_pid_o_hash_m_per', 's_pid_d_hash_m_per',

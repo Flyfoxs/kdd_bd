@@ -122,8 +122,6 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
         #print(train_data.shape,trn_idx.shape, val_idx.shape , X_test.shape,trn_idx.max(), val_idx.max() )
         train_x, train_y, val_x, val_y, X_test = extend_split_feature(train_data, trn_idx, val_idx, orig_X_test, drop_list)
 
-
-
         logger.info(f"fold n°{fold_} BEGIN, cv:{cv},train:{train_x.shape}, val:{val_x.shape}, test:{X_test.shape}, cat:{cate_cols} " )
         trn_data = lgb.Dataset(train_x, train_y, categorical_feature=cate_cols)
         val_data = lgb.Dataset(val_x, val_y , categorical_feature=cate_cols, reference=trn_data)
@@ -133,7 +131,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
             'nthread': -1,
             'verbose':-1,
             'num_leaves': 80,
-            'min_data_in_leaf': 100,
+            'min_data_in_leaf': 90,
             'feature_fraction':0.65,
             'lambda_l1': 20,
             'lambda_l2': 5,
@@ -381,7 +379,7 @@ nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
 
 #nohup python -u  core/train.py train_ex > 2019_base_0.69366536.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_21.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_01.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > base_order_v2.log 2>&1 &
 

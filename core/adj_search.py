@@ -150,6 +150,10 @@ if __name__== '__main__':
     for input_file in [
                   # './output/stacking/L_500000_191_0.68164_0422_0730.h5',
                   # './output/stacking/L_500000_191_0.68142_0434_0730.h5',
+                    './output/stacking/L_500000_334_0.67816_0745_1501.h5',
+                    './output/stacking/L_500000_334_0.67790_0482_1384.h5',
+                    './output/stacking/L_500000_334_0.67779_0433_1037.h5',
+                    './output/stacking/L_500000_334_0.67787_0845_1443.h5',
                     './output/stacking/L_500000_342_0.67806_0537_1178.h5',   #0.69363551
                     './output/stacking/merge.h5',
                     './output/stacking/L_500000_268_0.67818_0439_1462.h5', #0.69898001
@@ -159,12 +163,13 @@ if __name__== '__main__':
                    # './output/stacking/L_500000_190_0.67820_0520_1422.h5', #0.69937582
                   #'./output/stacking/L_0.68018_0914_1667.h5',              #0.69972754
                     './output/stacking/L_500000_301_0.67828_0983_1442.h5',  # 0.69873236
-                ]:
+                ][:2]:
         raw_score, adj_score, best_para  = find_best_para(input_file)
         logger.info(f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f}, best_para:{ best_para }')
 
 
         gen_sub_file(input_file, best_para, adj_score, raw_score)
+        #break
 
 
 
