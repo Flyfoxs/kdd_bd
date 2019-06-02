@@ -26,8 +26,8 @@ def get_best_paras(df: pd.DataFrame):
                 [0.9, 1.0, 0.6, 1.2, 1.6, 0.7, 0.9, 0.9, 1.6, 0.5, 1.3, 1.1],
                 [0.97, 0.9, 0.64, 1.8, 2.8, 0.68, 1.54, 0.84, 1.4, 0.8, 1.22, 1.01]
                 ]
-        #return []
-        #return [np.ones(12)]
+        # return []
+        # return [np.ones(12)]
     else:  ##
         df = df.sort_values('score', ascending=False)
         logger.debug(f'cur best:{df.score.values[0]}, {df.paras.values[0]}')
@@ -42,7 +42,7 @@ def check_insert(df: pd.DataFrame, paras):
     # if  any(np.isin(paras,df.paras.values)):
     if any(df.paras.isin([paras])):
         # print(len(df.paras.isin([paras])))
-        #logger.info(f'Already existing {len(df)},  {df.loc[df.paras == paras, "score"]}, for {paras}')
+        # logger.info(f'Already existing {len(df)},  {df.loc[df.paras == paras, "score"]}, for {paras}')
         pass
     else:  ###
         # print('append', paras, type(paras))
@@ -61,14 +61,17 @@ def adjust_res_ratio(adj, p):
     return score_after
 
 
-#file = './output/stacking/L_0.68018_0914_1667.h5'
+# file = './output/stacking/L_0.68018_0914_1667.h5'
 @timed()
-def find_best_para(file):
+def find_best_para(file, disable_phase1=False):
     df = pd.DataFrame(columns=['paras', 'score'])
 
     adj = pd.read_hdf(file, 'train')
 
-    raw_score = f1_score(adj.click_mode.values, adj.iloc[:,:-1].idxmax(axis=1).astype(int), average='weighted')
+    if disable_phase1:
+        adj = adj.loc[adj.index.str.startswith('2-')]
+
+    raw_score = f1_score(adj.click_mode.values, adj.iloc[:, :-1].idxmax(axis=1).astype(int), average='weighted')
 
     lr = 0.1
     for i in range(2000):
@@ -105,6 +108,7 @@ def find_best_para(file):
     print(df.head(5))
     return raw_score, df.iloc[0].score, list(df.iloc[0].paras)
 
+
 def gen_sub_file(input_file, paras, adj_score, raw_score):
     sub = pd.read_hdf(input_file, 'test')
 
@@ -122,6 +126,7 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
 
 from functools import reduce
 
+
 # input_list = [
 #     ('./output/stacking/L_500000_268_0.67818_0439_1462.h5', 1),
 #
@@ -138,40 +143,39 @@ def merge_file(input_list):
     return df
 
 
-if __name__== '__main__':
+if __name__ == '__main__':
     """
     The stack_file require the format as below:
     train:(13 columns): 0,1,..11,click_mode(不是 recomm_mode,而是原始label)
     test: (12 columns): 0,1,..11
-    
+
     index is sid, and DF is sorted by index asc
     """
 
     for input_file in [
-                  # './output/stacking/L_500000_191_0.68164_0422_0730.h5',
-                  # './output/stacking/L_500000_191_0.68142_0434_0730.h5',
-                    './output/stacking/L_500000_334_0.67816_0745_1501.h5',
-                    './output/stacking/L_500000_334_0.67790_0482_1384.h5',
-                    './output/stacking/L_500000_334_0.67779_0433_1037.h5',
-                    './output/stacking/L_500000_334_0.67787_0845_1443.h5',
-                    './output/stacking/L_500000_342_0.67806_0537_1178.h5',   #0.69363551
-                    './output/stacking/merge.h5',
-                    './output/stacking/L_500000_268_0.67818_0439_1462.h5', #0.69898001
-
-                    './output/stacking/L_500000_190_0.67825_0534_1613.h5', #0.69995215
-                    './output/stacking/L_500000_190_0.67810_0579_1215.h5',
-                   # './output/stacking/L_500000_190_0.67820_0520_1422.h5', #0.69937582
-                  #'./output/stacking/L_0.68018_0914_1667.h5',              #0.69972754
-                    './output/stacking/L_500000_301_0.67828_0983_1442.h5',  # 0.69873236
-                ][:2]:
-        raw_score, adj_score, best_para  = find_best_para(input_file)
-        logger.info(f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f}, best_para:{ best_para }')
-
-
-        gen_sub_file(input_file, best_para, adj_score, raw_score)
-        #break
-
-
+                          './output/stacking/L_2000000_336_0.65994_1539_2530.h5',
+                          # './output/stacking/L_500000_191_0.68164_0422_0730.h5',
+                          # './output/stacking/L_500000_191_0.68142_0434_0730.h5',
+                          #   './output/stacking/L_500000_334_0.67816_0745_1501.h5',
+                          #   './output/stacking/L_500000_334_0.67790_0482_1384.h5',
+                          #   './output/stacking/L_500000_334_0.67779_0433_1037.h5',
+                          #   './output/stacking/L_500000_334_0.67787_0845_1443.h5',
+                          #   './output/stacking/L_500000_342_0.67806_0537_1178.h5',   #0.69363551
+                          #   './output/stacking/merge.h5',
+                          #   './output/stacking/L_500000_268_0.67818_0439_1462.h5', #0.69898001
+                          #
+                          #   './output/stacking/L_500000_190_0.67825_0534_1613.h5', #0.69995215
+                          #   './output/stacking/L_500000_190_0.67810_0579_1215.h5',
+                          #  # './output/stacking/L_500000_190_0.67820_0520_1422.h5', #0.69937582
+                          # #'./output/stacking/L_0.68018_0914_1667.h5',              #0.69972754
+                          #   './output/stacking/L_500000_301_0.67828_0983_1442.h5',  # 0.69873236
+                      ][:2]:
+        for disable_phase1 in [True, False]:
+            raw_score, adj_score, best_para = find_best_para(input_file, disable_phase1)
+            logger.info(
+                f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f}, best_para:{ best_para }, disable_phase1:{disable_phase1}')
+            gen_sub_file(input_file, best_para, adj_score, raw_score)
+            # break
 
 """
 

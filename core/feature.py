@@ -11,6 +11,7 @@ import seaborn as sns
 
 from file_cache.utils.util_pandas import *
 from file_cache.cache import file_cache
+from file_cache.utils.reduce_mem import *
 from functools import lru_cache
 
 from glob import glob
@@ -83,9 +84,9 @@ def get_plan_mini(model):
 
     logger.warning(f'There are {old_len - len(sigle_model)} records were remove from {old_len} for mode:{model}')
 
-    sigle_model['price'] = sigle_model['price'].fillna(0)  # .astype(float)
+    #sigle_model['price'] = sigle_model['price'].fillna(0)  # .astype(float)
 
-    sigle_model = sigle_model.fillna(0).astype(int)#.set_index('dummy_sid')
+    #sigle_model = sigle_model.fillna(0).astype(int)#.set_index('dummy_sid')
 
     mini_plan = sigle_model.loc[:, plan_items + plan_rank]
 
@@ -108,10 +109,13 @@ def get_plan_mini(model):
 
     return mini_plan.add_prefix(f'{model:02}_')
 
-
+@timed()
 @lru_cache()
-def get_original(file):
-    return pd.read_csv(f'{input_folder}/{file}', dtype=type_dict)
+def get_original(file, phase=None):
+    df =  pd.read_csv(f'{input_folder}/{file}', dtype=type_dict)
+    if 'sid' in df.columns :
+        df['sid'] = f'{phase}-' + df['sid']
+    return df
 
 
 #
@@ -287,6 +291,8 @@ def get_plans():
     """
     plan = get_plan_original_wide()
 
+
+
     plan_pg = get_plan_percentage()
 
     seq = get_plan_model_sequence()
@@ -296,7 +302,7 @@ def get_plans():
     #todo plan_stati
     plan = pd.concat([plan, plan_pg, seq, plan_stati], axis=1)
 
-    plan.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plan.columns]
+    plan.index.name = 'sid'
 
     return plan.reset_index()
 
@@ -320,8 +326,8 @@ def get_plan_cat():
 @file_cache()
 def get_plan_original_deep():
     plan_list = []
-    for plan_file in ['train_plans.csv', 'test_plans.csv']:
-        original_plan = get_original(plan_file)
+    for plan_file, phase in [('train_plans_phase1.csv', 1), ('train_plans_phase2.csv', 2), ('test_plans.csv', 2)]:
+        original_plan = get_original(plan_file, phase)
         for index_sn, row in original_plan.iterrows():
             plans = json.loads(row.plans)
             plan_sn = 0
@@ -333,11 +339,14 @@ def get_plan_original_deep():
                     single_plan['sn'] = plan_sn
                     plan_sn += 1
                     single_plan['sid'] = row.sid
+                    single_plan['phase'] = phase
                     plan_list.append(single_plan)
                 # else:
                 #     logger.info(f'Already have mode:{cur_mode} for sid:{row.sid}')
     res = pd.DataFrame(plan_list)
-    res = res.fillna('0').replace({'':'0'}).astype(int)
+
+    logger.debug(f'Try to fillna for plan info:{len(res)}')
+    res[plan_items] = res.loc[:,plan_items].fillna('0').replace({'':'0'}).astype(int)
 
     res['price_rank'] = res[['sid', 'price']].groupby(['sid'])['price'].rank(method='min')
     res['distance_rank'] = res[['sid', 'distance']].groupby(['sid'])['distance'].rank(method='min')
@@ -353,8 +362,9 @@ def get_plan_original_deep():
 def get_plan_original_wide():
     res_list = []
     base_list = []
-    for file in ['train_plans.csv', 'test_plans.csv']:
-        base = get_original(file)
+    for file, phase in [('train_plans_phase1.csv', 1), ('train_plans_phase2.csv', 2), ('test_plans.csv', 2)]:
+        base = get_original(file, phase)
+        base['phase'] = phase
         base_list.append(base)
     base = pd.concat(base_list)
     from multiprocessing import Pool as ThreadPool  # 进程
@@ -371,6 +381,8 @@ def get_plan_original_wide():
 
     plan_part = pd.concat(plan_list, axis=1)
 
+    plan_part.index.name = 'sid'
+
     plan_part = plan_part.reset_index()
 
     plan_part = pd.merge(base, plan_part, on='sid')
@@ -381,13 +393,19 @@ def get_plan_original_wide():
 @file_cache()
 def get_query():
     import geohash as geo
-    train = get_original('train_queries.csv')
-    train['label'] = 'train'
+    train_1 = get_original('train_queries_phase1.csv', 1)
+    train_1['label'] = 'train'
+    train_1['phase'] = 1
 
-    test = get_original('test_queries.csv')
+    train_2 = get_original('train_queries_phase2.csv', 2)
+    train_2['label'] = 'train'
+    train_2['phase'] = 2
+
+    test = get_original('test_queries.csv', 2)
     test['label'] = 'test'
+    test['phase'] = 2
 
-    train_query = pd.concat([train, test])
+    train_query = pd.concat([train_1, train_2, test])
 
 
 
@@ -462,8 +480,8 @@ def get_stati_feature_pid():
         ['median', 'std', 'nunique', 'count', get_mode, get_mode_count]).add_prefix('s_pid_m_')
     res_list.append(pid_mode)
 
-    query = get_query()
-    query.head()
+    # query = get_query()
+    # query.head()
 
     for direction in ['o', 'd']:
         query[f'{direction}_hash_6'] = query[f'{direction}_hash_6'].astype('category').cat.codes
@@ -503,7 +521,10 @@ def get_geo_percentage(query, direct, gp_level=[], prefix='glb_'):
 
 @lru_cache()
 def get_click():
-    return get_original('train_clicks.csv')
+    click_1 =  get_original('train_clicks_phase1.csv', 1)
+    click_2 =  get_original('train_clicks_phase2.csv', 2)
+
+    return pd.concat([click_1, click_2])
 
 def get_profile():
     profile_data = get_original('profiles.csv').astype(int)
@@ -634,6 +655,11 @@ def extend_c2v_feature(c_list=['weekday' , 'hour']):
 def get_train_test():
     feature = get_feature().copy()
 
+    if disable_phase1 :
+        old_len = len(feature)
+        feature = feature.loc[feature.phase==2]
+        logger.info(f'Remove {old_len-len(feature)} phase#1 data from {old_len} rows:disable_phase1#{disable_phase1} ')
+
     #feature = extend_c2v_feature().copy()
 
     click_mode = feature.click_mode
@@ -656,11 +682,14 @@ def get_train_test():
     return train_data, X_test
 
 
+@timed()
 @lru_cache()
 @file_cache()
-def get_feature(ratio_base=0.1, group=None, ):
+@reduce_mem()
+def get_feature():
     query = get_query()
     plans = get_plans()
+    del plans['phase']
 
     #plan_cat = get_plan_cat()
     #plans.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plans.columns]
@@ -670,7 +699,8 @@ def get_feature(ratio_base=0.1, group=None, ):
 
     #del plans['plan_time']
 
-
+    logger.info(query.columns)
+    logger.info( list(plans.columns) )
     query = pd.merge(query, plans, how='left', on='sid')
 
     time_gap = (pd.to_datetime(query.plan_time) - pd.to_datetime(query.req_time)).dt.total_seconds()

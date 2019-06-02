@@ -31,3 +31,13 @@ enhance search dynamcic parameter
 order+model,cat
 day,
 hour,
+
+
+train:2018-10-01 00:00:09,2018-12-26 17:02:37
+
+test: 2018-12-01 00:00:02,2018-12-07 23:59:36
+
+train#1: 500000
+train#2: 1500000
+test:    304916
+

@@ -379,7 +379,7 @@ nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
 
 #nohup python -u  core/train.py train_ex > 2019_base_0.69366536.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_01.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_02_disable_phase1.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > base_order_v2.log 2>&1 &
 

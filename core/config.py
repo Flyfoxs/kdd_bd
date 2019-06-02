@@ -1,4 +1,6 @@
-input_folder = './input/data_set_phase1'
+input_folder = './input/data_set_phase2'
+
+disable_phase1 = False
 
 plan_items = ['distance', 'eta', 'price', 'transport_mode']
 
@@ -15,7 +17,7 @@ val_cut_point = 60 - 7
 hash_precision = [6]
 
 type_dict = {
-    'sid': 'int',
+    'sid': 'str',
     'pid': 'str',
 
     'day': 'int',
