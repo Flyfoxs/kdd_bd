@@ -1,6 +1,6 @@
 input_folder = './input/data_set_phase2'
 
-disable_phase1 = False
+disable_phase1 = True
 
 plan_items = ['distance', 'eta', 'price', 'transport_mode']
 

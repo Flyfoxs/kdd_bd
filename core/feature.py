@@ -879,7 +879,7 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list, mode_list=[]
 
 
     for col, type_ in val_x.dtypes.sort_values().iteritems():
-        if type_ not in ['int64', 'int16', 'int32', 'float64']:
+        if type_ not in ['float16', 'float32', 'int8', 'int64', 'int16', 'int32', 'float64']:
             logger.error((col, type_))
 
 

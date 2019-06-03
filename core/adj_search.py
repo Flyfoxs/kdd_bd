@@ -22,9 +22,8 @@ input_folder = './input/data_set_phase1'
 # df = pd.DataFrame(columns=['paras', 'score'])
 def get_best_paras(df: pd.DataFrame):
     if len(df) == 0:
-        return [[1.0, 0.9, 0.7, 1.8, 2.6, 0.7, 1.5, 0.82, 1.4, 0.8, 1.2, 0.9],
-                [0.9, 1.0, 0.6, 1.2, 1.6, 0.7, 0.9, 0.9, 1.6, 0.5, 1.3, 1.1],
-                [0.97, 0.9, 0.64, 1.8, 2.8, 0.68, 1.54, 0.84, 1.4, 0.8, 1.22, 1.01]
+        return [
+            [1.12, 0.9, 0.7, 2.22, 2.92, 0.8, 1.63, 0.83, 1.3, 0.77, 1.21, 0.89]
                 ]
         # return []
         # return [np.ones(12)]
@@ -63,7 +62,7 @@ def adjust_res_ratio(adj, p):
 
 # file = './output/stacking/L_0.68018_0914_1667.h5'
 @timed()
-def find_best_para(file, disable_phase1=False):
+def find_best_para(file, disable_phase1=True):
     df = pd.DataFrame(columns=['paras', 'score'])
 
     adj = pd.read_hdf(file, 'train')
@@ -120,6 +119,7 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
     sub['recommend_mode'] = sub.idxmax(axis=1)
 
     import csv
+    sub.index = pd.Series(sub.index).apply(lambda val: val.split('-')[-1])
     sub[['recommend_mode']].to_csv(sub_file, quoting=csv.QUOTE_ALL)
     logger.info(f'Sub file save to {sub_file}')
 
@@ -153,7 +153,9 @@ if __name__ == '__main__':
     """
 
     for input_file in [
-                          './output/stacking/L_2000000_336_0.65994_1539_2530.h5',
+                          './output/stacking/L_1500000_336_0.65328_1129_2425.h5',
+                          './output/stacking/L_2000000_336_0.65994_1539_2530.h5', #0.69506305
+
                           # './output/stacking/L_500000_191_0.68164_0422_0730.h5',
                           # './output/stacking/L_500000_191_0.68142_0434_0730.h5',
                           #   './output/stacking/L_500000_334_0.67816_0745_1501.h5',
@@ -170,7 +172,7 @@ if __name__ == '__main__':
                           # #'./output/stacking/L_0.68018_0914_1667.h5',              #0.69972754
                           #   './output/stacking/L_500000_301_0.67828_0983_1442.h5',  # 0.69873236
                       ][:2]:
-        for disable_phase1 in [True, False]:
+        for disable_phase1 in [True]:
             raw_score, adj_score, best_para = find_best_para(input_file, disable_phase1)
             logger.info(
                 f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f}, best_para:{ best_para }, disable_phase1:{disable_phase1}')
