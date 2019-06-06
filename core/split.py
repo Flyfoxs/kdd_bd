@@ -1,12 +1,32 @@
 
-from core.feature import *
+from core.feature import get_feature
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold, StratifiedKFold, GroupKFold
+from file_cache.utils.util_log import logger
+from tqdm import tqdm
 
 class manual_split:
-    def split(self, X_data, cut_point=47):
+
+
+    @staticmethod
+    def split_sk(X_data):
+        feature = get_feature().copy()
+        feature = feature.loc[X_data.index]
+
+        feature = feature.reset_index()
+
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
+
+        logger.info(f'split_sk:{feature.shape}')
+        #check_exception(feature)
+        split_fold = folds.split(feature.values, feature.click_mode.values)
+
+        return split_fold
+
+    @staticmethod
+    def split(X_data, cut_point=47):
         #return self.split_dummy_sid(X_data)
-        return self.split_sk(X_data)
+        return manual_split.split_sk(X_data)
         #return self.split_range( X_data, cut_point) #cut_point#54, train:(445340,), val:(54660,)
 
         #return self.split_group(X_data)
@@ -23,21 +43,6 @@ class manual_split:
     #     return  split_list
     #
 
-    def split_sk(self, X_data):
-        feature = get_feature().copy()
-        feature = feature.loc[X_data.index]
-
-        feature = feature.reset_index()
-
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
-
-        logger.info(f'split_sk:{feature.shape}')
-        check_exception(feature)
-        split_fold = folds.split(feature.values, feature.click_mode.values)
-
-        return split_fold
-
-
 
     def split_range(self,X_data,  cut_point):
         feature = get_feature()
@@ -48,10 +53,10 @@ class manual_split:
 
         res = [(tmp[(tmp.day>=0) & (tmp.day<=cut_point-1) ].index,
                  tmp[(tmp.day>=cut_point) & (tmp.day<=60) ].index)]
-        return tqdm(res, f'split_range:{cut_point}')
+        return res
 
-
-    def split_group(self,X_data,  begin_point=0):
+    @staticmethod
+    def split_group(X_data,  begin_point=0):
         feature = get_feature()
         feature = feature.loc[X_data.index]
 
@@ -70,74 +75,12 @@ class manual_split:
         return tqdm(res, f'split_group:{begin_point},{len(val)}')
 
 
-    def split_ratio(self,X_data,  cut_point):
-        feature = get_feature()
-
-        tmp = feature.loc[X_data.index]
-        tmp = tmp.reset_index()
-
-        ratio = get_feature_partition(cut_begin=cut_point, cut_end=60)
-        ratio = ratio.click_mode / ratio.click_mode.min()
-
-        df_list = []
-        for day in tqdm(range(0, cut_point), 'resample base on day'):
-            train = tmp.loc[tmp.day == day]
-            gp = train.click_mode.value_counts()
-            gp = gp.loc[gp.index >= 0].sort_index()
-            base = gp.min()
-            sample_count = round(ratio * base).astype(int)
-
-            for i in tqdm(range(0, 12), 'resample base on ratio'):
-                cnt = sample_count.loc[i]
-                df_base = train.loc[train.click_mode == i]
-                if cnt==0 or cnt > len(df_base):
-                    logger.warning(f'cnt>len(df_base), {cnt}>{len(df_base)}')
-                    cnt = min(cnt, len(df_base))
-                tmp_df = df_base.sample(cnt)
-                df_list.append(tmp_df)
-        logger.debug(f'DF_list size: {len(df_list)}')
-        new_df = pd.concat(df_list)
-        logger.info(new_df.click_mode.value_counts().sort_index())
-        return [(new_df.index, tmp[tmp.day>=cut_point].index)]
-
-
-    @timed()
-    def resample_train(begin=54, end=60):
-        feature = get_feature()
-        feature = feature.loc[feature.click_mode>=-1]
-        gp = feature.click_mode.value_counts()
-        gp = gp.loc[gp.index>=0].sort_index()
-        base = gp.min()
-
-        ratio = get_feature_partition(cut_begin=begin, cut_end=end)
-        ratio = ratio.click_mode/ratio.click_mode.min()
-        sample_count = round(ratio*base).astype(int)
-
-        new_df = feature.loc[feature.click_mode==-1]
-
-        for i in tqdm(range(0, 12), 'resample base on ratio'):
-            cnt = sample_count.loc[i]
-            tmp_df = feature.loc[feature.click_mode == i].sample(cnt)
-            new_df = pd.concat([new_df, tmp_df])
-        logger.info(new_df.click_mode.value_counts().sort_index())
-        return new_df
-
-#
-# @file_cache()
-# def get_split_sid(split_id):
-#     train = get_original('train_queries.csv')
-#     click = get_original('train_clicks.csv')
-#
-#     train = pd.merge(train,click, how='left', on='sid')
-#     train.click_mode = train.click_mode.fillna('0').astype(int)
-#     train = train.sort_values('sid')
-#     folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
-#     split_fold = folds.split(train.values, train.click_mode.values)
-#
-#     for sn, (trn_idx, val_idx) in enumerate(split_fold):
-#         if sn == split_id:
-#             return train.iloc[trn_idx].sid, train.iloc[val_idx].sid
-
+    @staticmethod
+    def split_random(X_data):
+        kf = KFold(n_splits=5,
+                   shuffle=True,
+                   random_state=2019).split(X_data)
+        return kf
 
 if __name__ == '__main__' :
     for i in range(5):

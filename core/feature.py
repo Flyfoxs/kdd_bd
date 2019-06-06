@@ -655,6 +655,9 @@ def extend_c2v_feature(c_list=['weekday' , 'hour']):
 def get_train_test():
     feature = get_feature().copy()
 
+
+
+
     if disable_phase1 :
         old_len = len(feature)
         feature = feature.loc[feature.phase==2]
@@ -735,6 +738,7 @@ def get_feature():
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0), 'click_mode'] = 0 # -2
     query.click_mode = query.click_mode.fillna(-1).astype(int)
 
+    query = get_cv_feature(query)
 
     #Make click mode the last col
     click_mode = query.click_mode
@@ -889,6 +893,7 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list, mode_list=[]
     return train_x, train_y, val_x, val_y, X_test
 
 
+
 @lru_cache()
 def get_drop_list_std(thres_hold=0):
     feature = get_feature()
@@ -923,6 +928,60 @@ def remove_col(train, drop_list):
     logger.info(f'Final remove list:{remove_list}')
     train = train.drop(remove_list, axis=1, errors='ignore')
     return train#.loc[:, [item for item in col_order if item in train.columns ] ]
+
+
+from core.split import *
+@timed()
+def cv_feat(feature, cols):
+    def label_mean(data, feat_set, cols):
+        res = np.zeros((data.shape[0], 12))
+        for click_mode in range(12):
+            feat_set['cur_mode'] = feat_set.click_mode == click_mode
+            cols_label = feat_set.groupby([cols], as_index=False)['cur_mode'].agg({'feats': 'mean'})
+            res[:, click_mode] = data[[cols]].merge(cols_label, 'left', [cols])['feats'].fillna(0).values
+        return pd.DataFrame(res, index=data.index).add_prefix(f'cv_{cols}_')
+
+    feat_set = feature.loc[feature.label == 'train']
+    test_set = feature.loc[feature.label == 'test']
+
+    #     print(feature.shape, feat_set.shape, test_set.shape)
+    # print(test_set.head(3))
+
+    # result     = pd.DataFrame()
+    label_fold = pd.DataFrame()
+    res_list = []
+    from core.split import manual_split
+    kf = manual_split.split_random(feat_set)
+    for k, (train_fold, test_fold) in enumerate(kf):
+        result_tmp = label_mean(feat_set.iloc[test_fold, :], feat_set.iloc[train_fold, :], cols)
+        res_list.append(result_tmp)
+        test_tmp = label_mean(test_set, feat_set.iloc[train_fold, :], cols)
+
+        label_fold = test_tmp + label_fold if not label_fold.empty else test_tmp
+    label_fold = label_fold / 5
+    #     print(label_fold.sum().sum())
+    #     #print(label_fold.head(3))
+    res_list.append(label_fold)
+    result = pd.concat(res_list)
+    print(result.shape, label_fold.shape)
+    return result
+
+
+@timed()
+def get_cv_feature(query):
+    for col in tqdm(['pid', 'o_hash_6',
+                'd_hash_6', 'o_d_hash_6',
+                'o_seq_0',
+                'o_seq_1',
+                'o_seq_2',
+                'o_seq_3',
+                'o_seq_4',
+                'o_seq_5',
+                'o_seq_6',
+                'o_seq_7', ]):
+        res = cv_feat(query, col)
+        query[res.columns] = res
+    return query
 
 
 @file_cache()
