@@ -119,26 +119,26 @@ def find_best_para(adj):
 
 def get_adj_df(df, para_file ):
     paras = get_paras(para_file)
-    df['hour'] = get_feature().loc[df.index, 'hour']
-    for hour in range(24):
+    partition = get_partition()
+    for bin_id in partition.bin_id.drop_duplicates():
         for mode in range(12):
-            ratio = paras[hour][mode]
+            ratio = paras[bin_id][mode]
             mode = str(mode)
-            df.loc[df.hour==hour , mode] = df.loc[df.hour ==hour , mode] * ratio
+            partition_cur = partition.loc[partition.bin_id==bin_id]
+            df.loc[df.index.isin(partition_cur.index) , mode] = df.loc[df.index.isin(partition_cur.index) , mode] * ratio
     return df
 
 
 @lru_cache()
-def get_paras(para_file='./output/stacking/L_2000000_480_0.66449_0629_1672.h5.para_hour2.h5'):
+def get_paras(para_file='./output/stacking/L_2000000_480_0.66449_0629_1672.h5.para_bin2.h5'):
     tmp = pd.read_hdf(para_file)
     tmp = tmp.loc[tmp.score > 0]  # .shape
     # tmp.req_time.value_counts()
     tmp.score = tmp.score.astype(float)
-    # tmp = tmp.sort_values(['hour', 'score'] ).reset_index(drop=True)
-    tmp['rank'] = tmp.groupby('hour')['score'].rank(method='first', ascending=False)
-    # tmp.loc[tmp['hour']==23].reset_index(drop=True)
+
+    tmp['rank'] = tmp.groupby('bin_id')['score'].rank(method='first', ascending=False)
     tmp = tmp.loc[tmp['rank'] == 1]
-    tmp = tmp.set_index('hour').sort_index()
+    tmp = tmp.set_index('bin_id').sort_index()
     return tmp['paras'].values
 
 
@@ -146,8 +146,7 @@ def gen_sub_file(input_file, para_file, adj_score, raw_score):
     #paras = get_paras(para_file)
 
     sub = pd.read_hdf(input_file, 'test')
-    sub['hour'] = get_feature().loc[sub.index, 'hour']
-    sub_file = f'./output/sub/adj_{adj_score:0.5f}_{raw_score:0.6f}_hour.csv'
+    sub_file = f'./output/sub/adj_{adj_score:0.5f}_{raw_score:0.6f}_bin.csv'
 
     sub = get_adj_df(sub, para_file)
 
@@ -164,12 +163,6 @@ def gen_sub_file(input_file, para_file, adj_score, raw_score):
 from functools import reduce
 
 
-# input_list = [
-#     ('./output/stacking/L_500000_268_0.67818_0439_1462.h5', 1),
-#
-#     ('./output/stacking/L_500000_190_0.67825_0534_1613.h5', 1), ]
-#
-
 def merge_file(input_list):
     for key in ['train', 'test']:
         df_list = [pd.read_hdf(file, key) * weight for file, weight in input_list]
@@ -179,12 +172,16 @@ def merge_file(input_list):
         df = df / len(input_list)
     return df
 
-def filter_by_hour(df, hour):
+
+@lru_cache()
+def get_partition():
     feature = get_feature()
-    #query = feature.loc[pd.to_datetime(feature.req_time.dt.date) >= pd.to_datetime('2018-11-10')]
-    #feature = feature.loc[(feature.hour == hour) & (feature.phase == 2) & (feature.click_mode >= 0)]
-    query = feature.loc[ (feature.hour==hour )& (feature.phase==2)& (feature.click_mode>=0) ]
-    return df.loc[df.index.isin(query.index)]
+    feature = feature.loc[pd.to_datetime(feature.req_time.dt.date) >= pd.to_datetime('2018-11-10')]
+    feature = feature.loc[feature.phase==2]
+    feature['bin_name'] = pd.qcut(feature.hour, 3)
+    feature['bin_id']  = 1 #feature.bin_name.cat.codes
+    feature.bin_id.value_counts().sort_index()
+    return feature.loc[:, ['bin_id', 'phase', 'label']]#.head()
 
 if __name__ == '__main__':
     """
@@ -203,32 +200,30 @@ if __name__ == '__main__':
                               # './output/stacking/L_1500000_336_0.65328_1129_2425.h5',
 
     adj = pd.read_hdf(input_file, 'train')
-    old_len = len(adj)
-    adj = adj.loc[adj.index.str.startswith('2-')]
 
-    #Filter out the data before 11/10
-    feature = get_feature()
-    query = feature.loc[pd.to_datetime(feature.req_time.dt.date) >= pd.to_datetime('2018-11-10')]
-    adj = adj.loc[adj.index.isin(query.index)]
+    partition = get_partition()
+
+    adj = adj.loc[adj.index.isin(partition.index)]
 
     raw_score = f1_score(adj.click_mode.values, adj.iloc[:, :12].idxmax(axis=1).astype(int), average='weighted')
 
     res_list = []
 
-    para_file = f'{input_file}.para_hour3.h5'
+    para_file = f'{input_file}.para_bin3.h5'
 
-    for hour in tqdm(range(24)):
-            one_day = filter_by_hour(adj, hour)
+    old_len = len(adj)
+    for bin_id in tqdm(partition.bin_id.drop_duplicates()):
+            partition_cur = partition.loc[partition.bin_id==bin_id]
+            partition_cur = adj.loc[adj.index.isin(partition_cur.index)]
             #print(f'one_day shape:{one_day.shape}')
-            logger.info(f'only keep {len(one_day)} records from {old_len} records for: {hour}')
+            logger.info(f'only keep {len(partition_cur)} records from {old_len} records for: {bin_id}')
 
-            paras_df = find_best_para(one_day.copy())
-            paras_df['count']    = len(one_day)
-            paras_df['hour'] = hour
+            paras_df = find_best_para(partition_cur.copy())
+            paras_df['count']  = len(partition_cur)
+            paras_df['bin_id'] = bin_id
 
-            #logger.info(f'Estimate {len(paras_df)} paras for: {hour}')
             best = paras_df.iloc[0]
-            logger.info(f'\nThe best result for {len(one_day)}#{hour}#{len(paras_df)}, {paras_df.raw_score.max()} {paras_df.score.max()}, {list(best.paras)}')
+            logger.info(f'\nThe best result for {len(partition_cur)}#{bin_id}#{len(paras_df)}, {paras_df.raw_score.max()} {paras_df.score.max()}, {list(best.paras)}')
             res_list.append(paras_df)
     pd.concat(res_list).to_hdf(para_file, 'paras')
     logger.info(f'para save to file:{para_file}')
