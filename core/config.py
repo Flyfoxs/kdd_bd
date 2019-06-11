@@ -32,7 +32,7 @@ type_dict = {
     'click_mode': 'str'
 }
 
-cate_cols = []
+cate_cols = ['weekend', 'weekday','phase']
 
 good_col = [
     '6_distance_max_p', '1_price_max_p', 'profile_lda_1', '6_eta_max_p', '4_price', '2_eta', 'glb_sugg_o_6_per',
