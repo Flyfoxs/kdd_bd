@@ -1,62 +1,68 @@
+#phase 2
 
+ç”¨äº†phase 1 çš„ä»£ç ï¼Œåªè·‘phase 2 çš„æ•°æ®ã€‚ç»“æœä¸æ˜¯å¾ˆå¥½ï¼Œåªæœ‰0.687800.
+
+ç›®å‰åœ¨ç ”ç©¶æ€ä¹ˆæ‰¾å‡º mode = 0æƒ…å†µ
+
+# phase 1
 
 # Features
 
 ## commit -4 
 
-ĞŞ¸ÄÁËÒ»ÏÂ¶ÔgeohashµÄÏ¸Á£¶È£¬ ÌáÉıµ½ÁË0.69855
+ä¿®æ”¹äº†ä¸€ä¸‹å¯¹geohashçš„ç»†ç²’åº¦ï¼Œ æå‡åˆ°äº†0.69855
 
 ## commit -3
 
-×öÁËÒ»Ğ©geohash ÌØÕ÷¡£·ÖÊı´Ó6953 ÌáÉıµ½ÁË6968
-²ÉÑù±È0.5
+åšäº†ä¸€äº›geohash ç‰¹å¾ã€‚åˆ†æ•°ä»6953 æå‡åˆ°äº†6968
+é‡‡æ ·æ¯”0.5
 
 ## commit -2
 
-Î§ÈÆrank×öÁËÒ»Ğ©ÌØÕ÷
+å›´ç»•rankåšäº†ä¸€äº›ç‰¹å¾
 
-²ÉÑù±È 0.9 ·ÖÊı6916
+é‡‡æ ·æ¯” 0.9 åˆ†æ•°6916
 
-0.8 + rank ÌØÕ÷µ½ÁË6953
+0.8 + rank ç‰¹å¾åˆ°äº†6953
 
 
 ## commit 1 
 
-×ö¹ıµÄÒ»Ğ©ÌØÕ÷ 
+åšè¿‡çš„ä¸€äº›ç‰¹å¾ 
 
-1.plansÔ­Ê¼³éÈ¡mode£¬×ömode¾ØÕó
+1.plansåŸå§‹æŠ½å–modeï¼ŒåšmodeçŸ©é˜µ
   
-2.plansÔ­Ê¼Êı¾İ³éÈ¡speed=distance/eta,×öspeed¾ØÕó
+2.plansåŸå§‹æ•°æ®æŠ½å–speed=distance/eta,åšspeedçŸ©é˜µ
 
-3.±£ÁôÔ­Ê¼ÌØÕ÷
+3.ä¿ç•™åŸå§‹ç‰¹å¾
 
-4.Ä¿µÄµØÓë³ö·¢µØÂü¹ş¶Ù¾àÀë¼ÆËã
+4.ç›®çš„åœ°ä¸å‡ºå‘åœ°æ›¼å“ˆé¡¿è·ç¦»è®¡ç®—
 
-5.Ä¿µÄµØÓë³ö·¢µØ½Ç¶È¼ÆËã
+5.ç›®çš„åœ°ä¸å‡ºå‘åœ°è§’åº¦è®¡ç®—
 
-6.Í³¼ÆÍÆ¼öµÄplansÊıÁ¿
+6.ç»Ÿè®¡æ¨èçš„plansæ•°é‡
 
-7.Í³¼ÆplansÖĞÓĞprice£¨ÎŞplans£©µÄÊıÁ¿
+7.ç»Ÿè®¡plansä¸­æœ‰priceï¼ˆæ— plansï¼‰çš„æ•°é‡
 
-8.plansÖĞmode-distance¾ØÕó
+8.plansä¸­mode-distanceçŸ©é˜µ
 
-9.plansÖĞmode-eta¾ØÕó
+9.plansä¸­mode-etaçŸ©é˜µ
 
-10.plansÖĞmode-price¾ØÕó(ÀûÓÃ¸Ã¾ØÕóÀ´Ê¶±ğÄÄĞ©modeÊÇĞèÒªprice£¬ÄÄĞ©²»ĞèÒªprice)   mode 3 5 6ÎªÃ»ÓĞpriceµÄmode
+10.plansä¸­mode-priceçŸ©é˜µ(åˆ©ç”¨è¯¥çŸ©é˜µæ¥è¯†åˆ«å“ªäº›modeæ˜¯éœ€è¦priceï¼Œå“ªäº›ä¸éœ€è¦price)   mode 3 5 6ä¸ºæ²¡æœ‰priceçš„mode
 
-11.plansÖĞµÄmax min mean price
+11.plansä¸­çš„max min mean price
 
-12.plansÖĞµÄmax min mean eta
+12.plansä¸­çš„max min mean eta
 
-13.plansÖĞµÄmax min mean distance
+13.plansä¸­çš„max min mean distance
 
-14.µØÀíÎ»ÖÃ×ø±ê¾ÛÀà¡£
+14.åœ°ç†ä½ç½®åæ ‡èšç±»ã€‚
 
-15.mode 3 5 6ÔÚplansÖĞ³öÏÖµÄ¸öÊı
+15.mode 3 5 6åœ¨plansä¸­å‡ºç°çš„ä¸ªæ•°
 
-16.profileÓÃ»§ÃèÊöÎªw2v d2v tf-idf
+16.profileç”¨æˆ·æè¿°ä¸ºw2v d2v tf-idf
 
-17.transport¡ª¡ªmode tf-idf svd
+17.transportâ€”â€”mode tf-idf svd
 
 18.time week day month
 
@@ -64,22 +70,22 @@
 
 20.mean max min mode
 
-21.transport_modeÖĞÏàÍ¬µÄmodeºÍÏàÍ¬¸öÊı  µÚÒ»¸ömode³öÏÖºóÊÇ·ñÔÙ³öÏÖ£¬ÔÙ³öÏÖ´ÎÊı
+21.transport_modeä¸­ç›¸åŒçš„modeå’Œç›¸åŒä¸ªæ•°  ç¬¬ä¸€ä¸ªmodeå‡ºç°åæ˜¯å¦å†å‡ºç°ï¼Œå†å‡ºç°æ¬¡æ•°
 
-22.kmeans¾ÛÀà·Ö¸îµØÇø
+22.kmeansèšç±»åˆ†å‰²åœ°åŒº
 
-23.Ö÷ÌâÄ£Ê½·Ö½âtransport_mode
+23.ä¸»é¢˜æ¨¡å¼åˆ†è§£transport_mode
 
 
-## ±È½ÏŒÅµÄ
+## æ¯”è¾ƒå±Œçš„
  
-ÈıÎ¬¾ØÕó mode_price  mode_distance  mode_eta
+ä¸‰ç»´çŸ©é˜µ mode_price  mode_distance  mode_eta
 
-transport_mode_svd_fea_2 Ç¿ÌØ
+transport_mode_svd_fea_2 å¼ºç‰¹
 
-recommand_0_transport_mode Ç¿ÌØ
+recommand_0_transport_mode å¼ºç‰¹
 
-price_svd_fea_1 Ç¿ÌØ
+price_svd_fea_1 å¼ºç‰¹
 
 # How to use:
 
