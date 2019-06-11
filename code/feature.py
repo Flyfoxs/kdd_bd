@@ -16,7 +16,7 @@ from tqdm import tqdm
 from collections import Counter
 
 def read_profile_data():
-    profile_data = pd.read_csv('../data/profiles.csv')
+    profile_data = pd.read_csv('../data_set_phase2/profiles.csv')
     profile_na = np.zeros(67)
     profile_na[0] = -1
     profile_na = pd.DataFrame(profile_na.reshape(1, -1))
@@ -25,7 +25,7 @@ def read_profile_data():
     return profile_data
 
 def gen_profile_feas_lda(data):
-    profile = pd.read_csv('../data/profiles.csv')
+    profile = pd.read_csv('../data_set_phase2/profiles.csv')
     pid = profile.pop('pid')
 
     profile_list = []
@@ -53,12 +53,12 @@ def gen_profile_feas_lda(data):
     return data
 
 def merge_raw_data():
-    tr_queries = pd.read_csv('../data/train_queries.csv')
-    te_queries = pd.read_csv('../data/test_queries.csv')
-    tr_plans = pd.read_csv('../data/train_plans.csv')
-    te_plans = pd.read_csv('../data/test_plans.csv')
+    tr_queries = pd.read_csv('../data_set_phase2/train_queries_phase2.csv')
+    te_queries = pd.read_csv('../data_set_phase2/test_queries.csv')
+    tr_plans = pd.read_csv('../data_set_phase2/train_plans_phase2.csv')
+    te_plans = pd.read_csv('../data_set_phase2/test_plans.csv')
 
-    tr_click = pd.read_csv('../data/train_clicks.csv')
+    tr_click = pd.read_csv('../data_set_phase2/train_clicks_phase2.csv')
 
     tr_data = tr_queries.merge(tr_click, on='sid', how='left')
     tr_data = tr_data.merge(tr_plans, on='sid', how='left')
@@ -77,13 +77,13 @@ def merge_raw_data():
 
 
 def merge_split_data():
-    te_queries = pd.read_csv('../data/test_queries.csv')
-    te_plans = pd.read_csv('../data/test_plans.csv')
+    te_queries = pd.read_csv('../data_set_phase2/test_queries.csv')
+    te_plans = pd.read_csv('../data_set_phase2/test_plans.csv')
 
     te_data = te_queries.merge(te_plans, on='sid', how='left')
     te_data['click_mode'] = -1
 
-    tr_data = pd.read_csv('../data/split_data.csv')
+    tr_data = pd.read_csv('../data_set_phase2/split_data.csv')
 
     data = pd.concat([tr_data, te_data], axis=0)
     data = data.drop(['plan_time'], axis=1)
@@ -699,7 +699,7 @@ def groupby_geohash(data):
     data['first_eta'] = first_eta
     data['first_price'] = first_price
 
-    for index in [4, 5]:
+    for index in tqdm([ 4,5, 6, 7,8]):
         data = hash_processing(data,index=index)
         temp_data = data.groupby(['_o_hash_{}'.format(index), '_d_hash_{}'.format(index)])['first_mode'].nunique().reset_index().rename(columns={'first_mode':'group_hash__mode_nunique_{}'.format(index)})
         data = data.merge(temp_data,on=['_o_hash_{}'.format(index), '_d_hash_{}'.format(index)],how='left')
@@ -772,11 +772,11 @@ def groupby_geohash(data):
         data = data.merge(temp_data,on=['_o_hash_{}'.format(index),'_d_hash_{}'.format(index)],how='left')
 
     print (data.columns.values)
-    data = data.drop(['first_mode','first_distance','first_eta','first_price','_o_hash_5','_d_hash_5', '_o_hash_4' ,'_d_hash_4'],axis=1)
+    data = data.drop(['first_mode','first_distance','first_eta','first_price','_o_hash_8','_d_hash_8','_o_hash_7','_d_hash_7','_o_hash_6','_d_hash_6','_o_hash_5','_d_hash_5', '_o_hash_4' ,'_d_hash_4'],axis=1)
     return data
 
 
-def groupby_geohash_mode(data):
+def groupby_geohash_mode_o(data):
     first_mode = []
     first_distance = []
     first_eta = []
@@ -811,7 +811,7 @@ def groupby_geohash_mode(data):
     data['_eta_div_price'] = data['first_eta'] / data['first_price']
     data['_price_div_eta'] = data['first_price'] / data['first_eta']
 
-    for index in [4, 5, 6, 7, 8]:
+    for index in tqdm([ 4,5, 6, 7,8]):
 
         data = hash_processing(data,index=index)
         temp_data = data.groupby(['_o_hash_{}'.format(index),'first_mode']).size().reset_index().rename(columns={0:'count_mode_hash_{}'.format(index)})
@@ -953,29 +953,214 @@ def groupby_geohash_mode(data):
             columns={'_eta_div_price': 'std_eta_div_price_mode_hash_{}'.format(index)})
         data = data.merge(temp_data, on=['_o_hash_{}'.format(index), 'first_mode'], how='left')
 
-    data = data.drop(['_distance_div_price','_eta_div_price','_price_div_eta','_price_div_distance','first_mode','first_distance','first_eta','first_price','_o_hash_4','_o_hash_5','_o_hash_6','_d_hash_4','_d_hash_5','_d_hash_6'],axis=1)
+    data = data.drop(['_distance_div_price','_eta_div_price','_price_div_eta','_price_div_distance','first_mode','first_distance','first_eta','first_price','_o_hash_4','_o_hash_5','_o_hash_6','_o_hash_7','_d_hash_4','_d_hash_5','_d_hash_6','_d_hash_7','_o_hash_8','_d_hash_8'],axis=1)
     return data
+
+def groupby_geohash_mode_d(data):
+    first_mode = []
+    first_distance = []
+    first_eta = []
+    for value in tqdm(data['plans'].values):
+        try:
+            first_mode.append(eval(value)[0]['transport_mode'])
+            first_distance.append(eval(value)[0]['distance'])
+            first_eta.append(eval(value)[0]['eta'])
+        except:
+            first_mode.append(-1)
+            first_distance.append(-1)
+            first_eta.append(-1)
+
+    first_price = []
+    for value in tqdm(data['plans'].values):
+        try:
+            price = eval(value)[0]['price']
+            if price != '':
+                first_price.append(eval(value)[0]['price'])
+            else:
+                first_price.append(1)
+        except:
+            first_price.append(-1)
+
+    data['first_mode'] = first_mode
+    data['first_distance'] = first_distance
+    data['first_eta'] = first_eta
+    data['first_price'] = first_price
+
+    data['_distance_div_price'] = data['first_distance'] / data['first_price']
+    data['_price_div_distance'] = data['first_price'] / data['first_distance']
+    data['_eta_div_price'] = data['first_eta'] / data['first_price']
+    data['_price_div_eta'] = data['first_price'] / data['first_eta']
+
+    for index in tqdm([ 4,5, 6, 7,8]):
+
+        data = hash_processing(data,index=index)
+        temp_data = data.groupby(['_d_hash_{}'.format(index),'first_mode']).size().reset_index().rename(columns={0:'dcount_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data,on=['_d_hash_{}'.format(index),'first_mode'],how='left')
+
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_distance'].mean().reset_index().rename(
+        columns={'first_distance': 'dmean_distance_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_distance'].max().reset_index().rename(
+        columns={'first_distance': 'dmax_distance_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_distance'].min().reset_index().rename(
+            columns={'first_distance': 'dmin_distance_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_distance'].std().reset_index().rename(
+            columns={'first_distance': 'dstd_distance_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_eta'].mean().reset_index().rename(
+            columns={'first_eta': 'dmean_eta_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_eta'].max().reset_index().rename(
+            columns={'first_eta': 'dmax_eta_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_eta'].min().reset_index().rename(
+            columns={'first_eta': 'dmin_eta_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_eta'].std().reset_index().rename(
+            columns={'first_eta': 'dstd_eta_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_price'].mean().reset_index().rename(
+            columns={'first_price': 'dmean_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_price'].max().reset_index().rename(
+            columns={'first_price': 'dmax_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_price'].min().reset_index().rename(
+            columns={'first_price': 'dmin_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['first_price'].std().reset_index().rename(
+            columns={'first_price': 'dstd_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['_distance_div_price'].mean().reset_index().rename(
+            columns={'_distance_div_price': 'dmean_distance_div_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['_distance_div_price'].max().reset_index().rename(
+            columns={'_distance_div_price': 'dmax_distance_div_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['_distance_div_price'].min().reset_index().rename(
+            columns={'_distance_div_price': 'dmin_distance_div_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])['_distance_div_price'].std().reset_index().rename(
+            columns={'_distance_div_price': 'dstd_distance_div_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_price_div_distance'].mean().reset_index().rename(
+            columns={'_price_div_distance': 'dmean_price_div_distance_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_price_div_distance'].max().reset_index().rename(
+            columns={'_price_div_distance': 'dmax_price_div_distance_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_price_div_distance'].min().reset_index().rename(
+            columns={'_price_div_distance': 'dmin_price_div_distance_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_price_div_distance'].std().reset_index().rename(
+            columns={'_price_div_distance': 'dstd_price_div_distance_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_price_div_eta'].mean().reset_index().rename(
+            columns={'_price_div_eta': 'dmean_price_div_eta_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_price_div_eta'].max().reset_index().rename(
+            columns={'_price_div_eta': 'dmax_price_div_eta_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_price_div_eta'].min().reset_index().rename(
+            columns={'_price_div_eta': 'dmin_price_div_eta_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_price_div_eta'].std().reset_index().rename(
+            columns={'_price_div_eta': 'dstd_price_div_eta_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_eta_div_price'].mean().reset_index().rename(
+            columns={'_eta_div_price': 'dmean_eta_div_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_eta_div_price'].max().reset_index().rename(
+            columns={'_eta_div_price': 'dmax_eta_div_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_eta_div_price'].min().reset_index().rename(
+            columns={'_eta_div_price': 'dmin_eta_div_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+        temp_data = data.groupby(['_d_hash_{}'.format(index), 'first_mode'])[
+            '_eta_div_price'].std().reset_index().rename(
+            columns={'_eta_div_price': 'dstd_eta_div_price_mode_hash_{}'.format(index)})
+        data = data.merge(temp_data, on=['_d_hash_{}'.format(index), 'first_mode'], how='left')
+
+    data = data.drop(['_distance_div_price','_eta_div_price','_price_div_eta','_price_div_distance','first_mode','first_distance','first_eta','first_price','_o_hash_4','_o_hash_5','_o_hash_6','_o_hash_7','_d_hash_4','_d_hash_5','_d_hash_6','_d_hash_7','_o_hash_8','_d_hash_8'],axis=1)
+    return data
+
+
 
 def get_train_test_feas_data():
     # data = merge_raw_data()
     data = merge_split_data()
 
+    print ('starting one')
     data = gen_od_feas(data)
     data = gen_plan_feas(data)
     data = gen_profile_feas(data)
     data = gen_profile_feas_lda(data)
     data = gen_time_feas(data)
 
+    print ('starting two')
     data = plan_mode_matrix(data)
     data = arctan(data)
     data = distance(data)
     data = plan_speed_matrix(data)
 
+    print ('starting svd')
     data = mode_distance_svd(data)
     data = mode_eta_svd(data)
     data = mode_speed_svd(data)
 
-
+    print ('starting rank')
     data = rank_one_distance(data)
     data = rank_one_eta(data)
     data = rank_one_price(data)
@@ -984,12 +1169,16 @@ def get_train_test_feas_data():
     data = rank_eta_sub(data)
     data = rank_price_sub(data)
 
-
+    print ('starting hash')
     data = getDistance(data)
     data = hash_o_d(data)
 
+    print ('starting groupby_geohash')
     data = groupby_geohash(data)
-    data = groupby_geohash_mode(data)
+    print ('starting groupby_geohash_mode_o')
+    data = groupby_geohash_mode_o(data)
+    print ('starting groupby_geohash_mode_d')
+    data = groupby_geohash_mode_d(data)
 
     data = data.drop(['o', 'd'], axis=1)
     data = data.drop(['plans'], axis=1)

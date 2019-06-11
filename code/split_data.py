@@ -4,10 +4,10 @@ import numpy as np
 
 
 def merge_raw_data():
-    tr_queries = pd.read_csv('../data/train_queries.csv')
-    tr_plans = pd.read_csv('../data/train_plans.csv')
+    tr_queries = pd.read_csv('../data_set_phase2/train_queries_phase2.csv')
+    tr_plans = pd.read_csv('../data_set_phase2/train_plans_phase2.csv')
 
-    tr_click = pd.read_csv('../data/train_clicks.csv',dtype={'click_mode':int})
+    tr_click = pd.read_csv('../data_set_phase2/train_clicks_phase2.csv',dtype={'click_mode':int})
 
     tr_data = tr_queries.merge(tr_click, on='sid', how='left')
     tr_data = tr_data.merge(tr_plans, on='sid', how='left')
@@ -25,9 +25,9 @@ print (train.shape)
 data = pd.DataFrame()
 for index,value in train.groupby(['click_mode']):
     if int(index) in [2,7,1,5]:
-        value = value.sample(frac=0.6,random_state=2020)
+        value = value.sample(frac=1,random_state=2020)
         data = pd.concat([data,value],axis=0)
     else:
         data = pd.concat([data,value],axis=0)
-data.to_csv('../data/split_data.csv',index=False)
+data.to_csv('../data_set_phase2/split_data.csv',index=False)
 
