@@ -738,6 +738,8 @@ def get_feature():
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0), 'click_mode'] = 0 # -2
     query.click_mode = query.click_mode.fillna(-1).astype(int)
 
+    query = get_triple_gp(query)
+
     query = get_cv_feature(query)
 
     #Make click mode the last col
@@ -989,6 +991,30 @@ def get_cat_col():
     fea = get_feature()
     return fea.nunique().sort_values()
 
+
+@timed()
+def get_triple_gp(feature):
+    to_group = [
+        'pid', 'o', 'd', 'o0', 'o1', 'd0', 'd1', 'weekday'
+        # 'req_time_dow', 'req_is_weekend', 'sphere_dis_bins', 'odl2_dis_bins',
+        # 'Recommand_0_transport_mode','Recommand_1_transport_mode','Recommand_2_transport_mode','price_inMin_0_transport_mode'
+    ]
+
+    gen = []
+    for i in tqdm(range(len(to_group))):
+        for j in range(i + 1, len(to_group)):
+            for k in range(j + 1, len(to_group)):
+                gen.append([to_group[i], to_group[j], to_group[k]])
+
+    len(gen)
+
+    #feature['sid'] = feature.index
+    for i in tqdm(gen):
+        if ('_'.join(i) + '_agg_count' not in feature.columns):
+            feature['_'.join(i) + '_agg_count'] = feature[i + ['sid']].groupby(i)['sid'].transform('count')
+
+    #del feature['sid']
+    return feature
 
 if __name__ == '__main__':
     get_plan_original_deep() # main

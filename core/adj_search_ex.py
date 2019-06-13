@@ -106,8 +106,9 @@ if __name__ == '__main__':
                   ]:
 
         for input_file in [
-                                './output/stacking/L_2000000_480_0.66449_0629_1672.h5',
-                              './output/stacking/L_2000000_336_0.65994_1539_2530.h5', #0.69506305
+                                './output/stacking/L_2000000_536_0.66944_1038_1685.h5',
+                                #'./output/stacking/L_2000000_480_0.66449_0629_1672.h5',
+                                #'./output/stacking/L_2000000_336_0.65994_1539_2530.h5', #0.69506305
                               # './output/stacking/L_1500000_336_0.65318_1470_2220.h5',
                               # './output/stacking/L_1500000_336_0.65328_1129_2425.h5',
 
@@ -122,5 +123,5 @@ if __name__ == '__main__':
 """
 
 
-nohup python -u  core/adj_search_ex.py   > adj_search_ex.log 2>&1 &
+nohup python -u  core/adj_search_ex.py   > adj_search_ex_13.log 2>&1 &
 """
