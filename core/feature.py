@@ -858,9 +858,11 @@ def sample_ex(df):
     return df
 
 @timed()
-def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list, mode_list=[]):
+def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list):
     val_x = df.iloc[val_idx, :-1]
     val_y = df.iloc[val_idx].click_mode
+
+    logger.info(f'There are {len(val_x.day.value_counts())} days, {len(val_x)} rows records for validate')
 
     train = df.iloc[trn_idx].copy()
 
@@ -868,9 +870,9 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list, mode_list=[]
     # resample_list = get_resample_sid()
     # train = train.loc[~train.index.isin(resample_list)]
     # logger.info(f'There are {old_len - len(train)} records are remove from df#{old_len}')
-
-    if mode_list:
-        train = train.loc[train.click_mode.isin(mode_list)]
+    #
+    # if mode_list:
+    #     train = train.loc[train.click_mode.isin(mode_list)]
 
     click_mode = train.click_mode.astype(int)
     del train['click_mode']

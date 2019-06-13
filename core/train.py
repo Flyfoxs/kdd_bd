@@ -111,7 +111,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
     #     folds = manual_split()
     #     split_fold = folds.split(X_data, 60-6)
     folds = manual_split()
-    split_fold = folds.split(train_data)
+    split_fold = folds.split(train_data, cv)
 
     max_iteration = 0
     min_iteration = 99999
@@ -180,8 +180,9 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
             predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
         elif len(args)==0: #not Search model
 
-            all_data, y_data, _, _ , X_test = extend_split_feature(train_data, range(len(train_data)), orig_X_test, [])
+            all_data, y_data, _, _ , X_test = extend_split_feature(train_data, range(len(train_data)),[], orig_X_test, drop_list)
             all_train = lgb.Dataset(all_data, y_data, categorical_feature=cate_cols)
+            logger.info(f'CV is disable, train with full train data with iter:{clf.best_iteration}')
             clf = lgb.train(params,
                             all_train,
                             # num_round,
@@ -191,7 +192,6 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
                             verbose_eval=verbose_eval * 2,
                             )
             predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
-            logger.info(f'CV is disable, will train with full train data with iter:{clf.best_iteration}')
             break
         else:
             break
@@ -203,13 +203,14 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
     predictions = pd.DataFrame(predictions, index=X_test.index, columns=[str(i) for i in range(12)])
     predictions.index.name = 'sid'
     feature_importance_df = feature_importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
-    if cv:
-        oof = pd.DataFrame(oof, index=train_data.index, columns=[str(i) for i in range(12)])
-        save_stack_feature(oof, predictions, f'./output/stacking/L_{"_".join(map(str, train_data.shape))}_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
+    #if cv:
+    oof = pd.DataFrame(oof, index=train_data.index, columns=[str(i) for i in range(12)])
+    save_stack_feature(oof, predictions, f'./output/stacking/L_{"_".join(map(str, train_data.shape))}_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
     return predictions, score, feature_importance_df, f'{min_iteration}_{max_iteration}'
 
 def save_stack_feature(train:pd.DataFrame, test:pd.DataFrame, file_path):
     train_label = train.copy()
+    train_label = train_label.loc[train_label.sum(axis=1)>0]
     feature = get_feature()
     train_label['click_mode'] = feature.loc[train_label.index.values, 'click_mode']
     train_label.to_hdf(file_path,'train',mode='a')
@@ -302,20 +303,21 @@ def search_droplist(version='0.678278'):
 def train_ex(args={}, drop_list='' ):
     drop_list = drop_list.split(',')
 
-    for ratio in range(1):
-        train_data, X_test = get_train_test()
 
-        for cv in [True]:
-            res, score, feature_importance, best_iteration = train_lgb(train_data, X_test, cv=cv, args=args, drop_list=drop_list )
-            #logger.info(f'score:{score:0.6f}, drop_col:{",".join(drop_list)}')
-            feature_nums = len(feature_importance.feature.value_counts())
-            if len(args) == 0 or cv == True:
-                file = f'./output/res_enhance_{cv}_{len(train_data)}_{feature_nums}_{best_iteration}_{score:8.6f}_{"_".join(drop_list)}.csv'
-                res.to_csv(file)
-                gen_sub(file)
-            else:
-                logger.debug('Search model, do not save file')
-            feature_importance.to_hdf(f'./output/fi_{cv}_{best_iteration}_{len(train_data)}_{feature_nums}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
+    train_data, X_test = get_train_test()
+    #train_data = train_data.sample(frac=0.1, random_state=2019 )
+
+    for cv in [False]:
+        res, score, feature_importance, best_iteration = train_lgb(train_data, X_test, cv=cv, args=args, drop_list=drop_list )
+        #logger.info(f'score:{score:0.6f}, drop_col:{",".join(drop_list)}')
+        feature_nums = len(feature_importance.feature.value_counts())
+        if len(args) == 0 or cv == True:
+            file = f'./output/res_enhance_{cv}_{len(train_data)}_{feature_nums}_{best_iteration}_{score:8.6f}_{"_".join(drop_list)}.csv'
+            res.to_csv(file)
+            gen_sub(file)
+        else:
+            logger.debug('Search model, do not save file')
+        feature_importance.to_hdf(f'./output/fi_{cv}_{best_iteration}_{len(train_data)}_{feature_nums}_{score:6.4f}_{"_".join(drop_list)}.h5',key='key')
 
     res = { 'loss': -score, 'status': STATUS_OK, 'feature_nums':feature_nums, 'attachments': {"message": f'{args} ', } }
     logger.info(res)
@@ -373,7 +375,7 @@ nohup python -u  core/train.py train_ex > train_price_eta.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > train_price_eta_with_zero.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > 2019.log 2>&1 &
+nohup python -u  core/train.py train_ex > del.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
 
