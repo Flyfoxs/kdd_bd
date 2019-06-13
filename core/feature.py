@@ -17,6 +17,7 @@ from functools import lru_cache
 from glob import glob
 import json
 from math import radians, atan, tan, sin, acos, cos
+from deprecated import deprecated
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -91,7 +92,7 @@ def get_plan_mini(model):
     mini_plan = sigle_model.loc[:, plan_items + plan_rank]
 
 
-
+    #TODO
     mini_plan['pe_eta_price'] = mini_plan['eta']/mini_plan['price']
     mini_plan['pe_dis_price'] = mini_plan['distance']/mini_plan['price']
     mini_plan['pe_dis_eta']   = mini_plan['distance']/mini_plan['eta']
@@ -307,6 +308,7 @@ def get_plans():
     return plan.reset_index()
 
 
+@deprecated
 @file_cache()
 def get_plan_cat():
     plan_original = get_plan_original_wide()#.copy()
@@ -458,14 +460,14 @@ def get_plan_stati_feature_sid():
     res_list.append(tmp)
     return pd.concat(res_list, axis=1)
 
+def get_mode(ser):
+    return ser.value_counts().index[0]
+
+def get_mode_count(ser):
+    return ser.value_counts().values[0]
 
 @timed()
 def get_stati_feature_pid():
-    def get_mode(ser):
-        return ser.value_counts().index[0]
-
-    def get_mode_count(ser):
-        return ser.value_counts().values[0]
 
     res_list = []
 
@@ -655,8 +657,12 @@ def extend_c2v_feature(c_list=['weekday' , 'hour']):
 def get_train_test():
     feature = get_feature().copy()
 
+    feature = get_triple_gp(feature)
 
+    feature['o_d_pid'] = get_o_d_pid()
 
+    tmp = get_plan_analysis_deep()
+    feature = pd.merge(feature, tmp, left_on='o_seq_0', right_on='transport_mode')
 
     if disable_phase1 :
         old_len = len(feature)
@@ -684,12 +690,10 @@ def get_train_test():
 
     return train_data, X_test
 
-
 @timed()
 @lru_cache()
 @file_cache()
-@reduce_mem()
-def get_feature():
+def get_core_feature():
     query = get_query()
     plans = get_plans()
     del plans['phase']
@@ -738,8 +742,16 @@ def get_feature():
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0), 'click_mode'] = 0 # -2
     query.click_mode = query.click_mode.fillna(-1).astype(int)
 
-    query = get_triple_gp(query)
+    return query
 
+@timed()
+@lru_cache()
+@file_cache()
+@reduce_mem()
+def get_feature():
+
+    query = get_core_feature()
+    query = get_triple_gp(query)
     query = get_cv_feature(query)
 
     #Make click mode the last col
@@ -993,11 +1005,13 @@ def get_cat_col():
     fea = get_feature()
     return fea.nunique().sort_values()
 
-
 @timed()
 def get_triple_gp(feature):
+
+    feature['sphere_dis_bins'] = pd.cut(feature.sphere_dis, bins=20).cat.codes
     to_group = [
-        'pid', 'o', 'd', 'o0', 'o1', 'd0', 'd1', 'weekday'
+        'pid', 'o', 'd', 'o0', 'o1', 'd0', 'd1', 'weekday',
+        'weekend', 'hour', 'sphere_dis_bins'
         # 'req_time_dow', 'req_is_weekend', 'sphere_dis_bins', 'odl2_dis_bins',
         # 'Recommand_0_transport_mode','Recommand_1_transport_mode','Recommand_2_transport_mode','price_inMin_0_transport_mode'
     ]
@@ -1008,17 +1022,59 @@ def get_triple_gp(feature):
             for k in range(j + 1, len(to_group)):
                 gen.append([to_group[i], to_group[j], to_group[k]])
 
-    len(gen)
 
-    #feature['sid'] = feature.index
     for i in tqdm(gen):
         if ('_'.join(i) + '_agg_count' not in feature.columns):
-            feature['_'.join(i) + '_agg_count'] = feature[i + ['sid']].groupby(i)['sid'].transform('count')
+            feature['_'.join(i) + '_agg_count'] = feature[i + ['sid']].groupby(i)['pid'].transform('count')
 
-    #del feature['sid']
     return feature
 
+
+
+@timed()
+@file_cache()
+def get_o_d_pid():
+    query = get_query()
+    tmp = query.groupby(['o', 'd'])['pid'].transform(lambda x: np.mean(x.value_counts()))
+    tmp.index = query.sid
+    return tmp
+
+
+@timed()
+@file_cache()
+def get_plan_analysis_deep():
+    data = get_plan_original_deep()
+    stat_9 = data[['transport_mode']].drop_duplicates()
+    for i in tqdm(['transport_mode']):
+        tmp = data[[i, 'price', 'eta', 'distance']].groupby([i]).agg(
+            {'price': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count],
+             'eta': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count],
+             'distance': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count]})
+
+        print('=' * 100)
+        tmp.columns = ['_'.join(col).strip() for col in tmp.columns.values]
+        tmp = tmp.add_prefix(i + '_').reset_index()
+        stat_9 = stat_9.merge(tmp, how='left', on=i)
+
+    data = get_core_feature()
+    for i in tqdm(['o_seq_0']):
+        tmp = data[[i, 'sphere_dis']].groupby([i]).agg(
+            {'sphere_dis': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count],
+             # 'odl2_dis': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count],
+             })
+
+        tmp.columns = ['_'.join(col).strip() for col in tmp.columns.values]
+        tmp.index.name = 'transport_mode'
+        tmp = tmp.add_prefix(i + '_').reset_index()
+        stat_9 = stat_9.merge(tmp, how='left', on='transport_mode')
+
+    stat_9['is_null_sum'] = stat_9[[i for i in stat_9.columns if i not in ['transport_mode']]].isnull().sum(axis=1)
+
+    return stat_9
+
 if __name__ == '__main__':
+    get_o_d_pid()
+    get_core_feature()
     get_plan_original_deep() # main
     get_plan_original_wide()
     get_feature()

@@ -307,7 +307,7 @@ def train_ex(args={}, drop_list='' ):
     train_data, X_test = get_train_test()
     #train_data = train_data.sample(frac=0.1, random_state=2019 )
 
-    for cv in [False]:
+    for cv in [True, False]:
         res, score, feature_importance, best_iteration = train_lgb(train_data, X_test, cv=cv, args=args, drop_list=drop_list )
         #logger.info(f'score:{score:0.6f}, drop_col:{",".join(drop_list)}')
         feature_nums = len(feature_importance.feature.value_counts())
@@ -383,7 +383,7 @@ nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > base_02_disable_phase1.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_12.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_13.log 2>&1 &
 
 nohup python -u  core/train.py train_ex  {} 4_eta_max_p,1_distance_max_p,d_hash_6 > drop_test.log 2>&1 &
 

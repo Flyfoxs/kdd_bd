@@ -24,27 +24,16 @@ class manual_split:
         return split_fold
 
     @staticmethod
-    def split(X_data, cut_point=47):
-        #return self.split_dummy_sid(X_data)
-        return manual_split.split_sk(X_data)
-        #return self.split_range( X_data, cut_point) #cut_point#54, train:(445340,), val:(54660,)
-
-        #return self.split_group(X_data)
-
-    # def split_dummy_sid(self, X_data):
-    #     X_data = X_data.reset_index()
-    #     split_list = []
-    #     for i in range(5):
-    #         train_sid, val_sid = get_split_sid(i)
-    #
-    #         train_index = X_data.loc[X_data.sid.isin(train_sid)]
-    #         val_index   = X_data.loc[X_data.sid.isin(val_sid) & (X_data.en_label==0)]
-    #         split_list.append((train_index.index.values, val_index.index.values))
-    #     return  split_list
-    #
+    def split(X_data, cv):
+        if cv:
+            return manual_split.split_sk(X_data)
+        else:
+            return manual_split.split_range(X_data, 47)
+            #return manual_split.split_range(X_data, 54)
 
 
-    def split_range(self,X_data,  cut_point):
+    @staticmethod
+    def split_range(X_data,  cut_point):
         feature = get_feature()
 
         tmp = feature.loc[X_data.index]
