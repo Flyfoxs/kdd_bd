@@ -661,8 +661,10 @@ def get_train_test():
 
     feature['o_d_pid'] = get_o_d_pid()
 
+    feature['sid'] = feature.index
     tmp = get_plan_analysis_deep()
     feature = pd.merge(feature, tmp, left_on='o_seq_0', right_on='transport_mode')
+    feature.set_index('sid')
 
     if disable_phase1 :
         old_len = len(feature)
@@ -1025,7 +1027,7 @@ def get_triple_gp(feature):
 
     for i in tqdm(gen):
         if ('_'.join(i) + '_agg_count' not in feature.columns):
-            feature['_'.join(i) + '_agg_count'] = feature[i + ['sid']].groupby(i)['pid'].transform('count')
+            feature['_'.join(i) + '_agg_count'] = feature.groupby(i)['pid'].transform('count')
 
     return feature
 
