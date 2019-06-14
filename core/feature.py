@@ -650,21 +650,33 @@ def extend_c2v_feature(c_list=['weekday' , 'hour']):
 
     return feature.set_index('sid')
 
+@timed()
+def get_feature_ex_bin():
+    feature = get_feature().copy()
+    feature['sid']  = feature.index
+    feature.index = pd.Series(feature.index).apply(lambda val: val.split('-')[1]).astype(int)
 
+    bin_feature = pd.read_csv('./input/tmp/oof_train_test.csv', index_col='sid')
+
+    feature = pd.concat([feature, bin_feature], axis=1)
+
+    feature = feature.set_index('sid')
+
+    return feature
 
 
 @timed()
 def get_train_test():
-    feature = get_feature().copy()
+    feature = get_feature_ex_bin()#.copy()
 
     feature = get_triple_gp(feature)
 
     feature['o_d_pid'] = get_o_d_pid()
 
-    feature['sid'] = feature.index
-    tmp = get_plan_analysis_deep()
-    feature = pd.merge(feature, tmp, left_on='o_seq_0', right_on='transport_mode')
-    feature.set_index('sid')
+    # feature['sid'] = feature.index
+    # tmp = get_plan_analysis_deep()
+    # feature = pd.merge(feature, tmp, left_on='o_seq_0', right_on='transport_mode')
+    # feature = feature.set_index('sid')
 
     if disable_phase1 :
         old_len = len(feature)
@@ -1022,12 +1034,13 @@ def get_triple_gp(feature):
     for i in tqdm(range(len(to_group))):
         for j in range(i + 1, len(to_group)):
             for k in range(j + 1, len(to_group)):
-                gen.append([to_group[i], to_group[j], to_group[k]])
+                gp = [to_group[i], to_group[j], to_group[k]]
+                if ('_'.join(gp) + '_agg_count' not in feature.columns):
+                    gen.append(gp)
 
 
     for i in tqdm(gen):
-        if ('_'.join(i) + '_agg_count' not in feature.columns):
-            feature['_'.join(i) + '_agg_count'] = feature.groupby(i)['pid'].transform('count')
+        feature['_'.join(i) + '_agg_count'] = feature.groupby(i)['pid'].transform('count')
 
     return feature
 
@@ -1042,8 +1055,7 @@ def get_o_d_pid():
     return tmp
 
 
-@timed()
-@file_cache()
+@deprecated(reason='loss score')
 def get_plan_analysis_deep():
     data = get_plan_original_deep()
     stat_9 = data[['transport_mode']].drop_duplicates()

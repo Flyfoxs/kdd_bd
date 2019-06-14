@@ -383,7 +383,9 @@ nohup python -u  core/train.py train_ex > 2019_tain_base_on_all.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > base_02_disable_phase1.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_13.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_13_remove_analysis_deep.log 2>&1 &
+
+nohup python -u  core/train.py train_ex > base_13_bin_fea.log 2>&1 &
 
 nohup python -u  core/train.py train_ex  {} 4_eta_max_p,1_distance_max_p,d_hash_6 > drop_test.log 2>&1 &
 
