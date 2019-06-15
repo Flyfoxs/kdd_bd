@@ -13,7 +13,7 @@ class manual_split:
         feature = get_feature().copy()
         feature = feature.loc[X_data.index]
 
-        feature = feature.reset_index()
+        #feature = feature.reset_index()
 
         folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
 

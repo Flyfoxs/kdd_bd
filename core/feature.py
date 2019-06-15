@@ -112,10 +112,8 @@ def get_plan_mini(model):
 
 @timed()
 @lru_cache()
-def get_original(file, phase=None):
+def get_original(file):
     df =  pd.read_csv(f'{input_folder}/{file}', dtype=type_dict)
-    if 'sid' in df.columns :
-        df['sid'] = f'{phase}-' + df['sid']
     return df
 
 
@@ -329,7 +327,7 @@ def get_plan_cat():
 def get_plan_original_deep():
     plan_list = []
     for plan_file, phase in [('train_plans_phase1.csv', 1), ('train_plans_phase2.csv', 2), ('test_plans.csv', 2)]:
-        original_plan = get_original(plan_file, phase)
+        original_plan = get_original(plan_file)
         for index_sn, row in original_plan.iterrows():
             plans = json.loads(row.plans)
             plan_sn = 0
@@ -365,7 +363,7 @@ def get_plan_original_wide():
     res_list = []
     base_list = []
     for file, phase in [('train_plans_phase1.csv', 1), ('train_plans_phase2.csv', 2), ('test_plans.csv', 2)]:
-        base = get_original(file, phase)
+        base = get_original(file)
         base['phase'] = phase
         base_list.append(base)
     base = pd.concat(base_list)
@@ -395,15 +393,15 @@ def get_plan_original_wide():
 @file_cache()
 def get_query():
     import geohash as geo
-    train_1 = get_original('train_queries_phase1.csv', 1)
+    train_1 = get_original('train_queries_phase1.csv')
     train_1['label'] = 'train'
     train_1['phase'] = 1
 
-    train_2 = get_original('train_queries_phase2.csv', 2)
+    train_2 = get_original('train_queries_phase2.csv')
     train_2['label'] = 'train'
     train_2['phase'] = 2
 
-    test = get_original('test_queries.csv', 2)
+    test = get_original('test_queries.csv')
     test['label'] = 'test'
     test['phase'] = 2
 
@@ -523,8 +521,8 @@ def get_geo_percentage(query, direct, gp_level=[], prefix='glb_'):
 
 @lru_cache()
 def get_click():
-    click_1 =  get_original('train_clicks_phase1.csv', 1)
-    click_2 =  get_original('train_clicks_phase2.csv', 2)
+    click_1 =  get_original('train_clicks_phase1.csv')
+    click_2 =  get_original('train_clicks_phase2.csv')
 
     return pd.concat([click_1, click_2])
 
@@ -654,7 +652,7 @@ def extend_c2v_feature(c_list=['weekday' , 'hour']):
 def get_feature_ex_bin():
     feature = get_feature().copy()
     feature['sid']  = feature.index
-    feature.index = pd.Series(feature.index).apply(lambda val: val.split('-')[1]).astype(int)
+    #feature.index = pd.Series(feature.index).apply(lambda val: val.split('-')[1]).astype(int)
 
     bin_feature = pd.read_csv('./input/tmp/oof_train_test.csv', index_col='sid')
 
@@ -667,11 +665,10 @@ def get_feature_ex_bin():
 
 @timed()
 def get_train_test():
-    feature = get_feature_ex_bin()#.copy()
+    #feature = get_feature_ex_bin()#.copy()
+    feature = get_feature().copy()
 
-    feature = get_triple_gp(feature)
 
-    feature['o_d_pid'] = get_o_d_pid()
 
     # feature['sid'] = feature.index
     # tmp = get_plan_analysis_deep()
@@ -752,10 +749,17 @@ def get_core_feature():
     logger.info('Finish merge stat feature')
 
     query = pd.merge(query, click, how='left', on='sid')
+
+    query = get_triple_gp(query)
+    query = get_cv_feature(query)
+    query['o_d_pid'] = get_o_d_pid()
+
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0 > 0), 'click_mode']  = 0
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0), 'click_mode'] = 0 # -2
     query.click_mode = query.click_mode.fillna(-1).astype(int)
 
+    query = query.fillna(0)
+    logger.info('Finish fillna')
     return query
 
 @timed()
@@ -765,8 +769,7 @@ def get_core_feature():
 def get_feature():
 
     query = get_core_feature()
-    query = get_triple_gp(query)
-    query = get_cv_feature(query)
+
 
     #Make click mode the last col
     click_mode = query.click_mode
@@ -774,10 +777,10 @@ def get_feature():
     query['click_mode'] = click_mode
 
     logger.info('Finish merge click feature')
-    query = query.set_index('sid').sort_index()
+    query.index = query.sid
+    query = query.sort_index()
     logger.info('Finish set index')
-    query = query.fillna(0)
-    logger.info('Finish fillna')
+
     return query
 
 
