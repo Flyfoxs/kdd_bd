@@ -283,6 +283,7 @@ def get_plan_nlp():
 
 @timed()
 @file_cache()
+@reduce_mem()
 def get_plans():
     """
     3, 5, 6 price is 0
@@ -359,6 +360,7 @@ def get_plan_original_deep():
 
 #@lru_cache()
 @file_cache()
+@reduce_mem()
 def get_plan_original_wide():
     res_list = []
     base_list = []
@@ -634,6 +636,7 @@ def get_feature_partition(cut_begin=48, cut_end=60):
 #     return train_data, X_test
 #
 
+@deprecated(reason='useless')
 def extend_c2v_feature(c_list=['weekday' , 'hour']):
     feature = get_feature().reset_index()
     original_c2v = pd.read_csv('./output/c2v.txt', delimiter=' ', skiprows=1, header=None)
@@ -668,7 +671,9 @@ def get_train_test():
     #feature = get_feature_ex_bin()#.copy()
     feature = get_feature().copy()
 
+    #feature = feature.sample(frac=0.2)
 
+    #feature = feature.sort_values(['phase','sid'])
 
     # feature['sid'] = feature.index
     # tmp = get_plan_analysis_deep()
@@ -704,7 +709,8 @@ def get_train_test():
 @timed()
 @lru_cache()
 @file_cache()
-def get_core_feature():
+@reduce_mem()
+def get_feature_core():
     query = get_query()
     plans = get_plans()
     del plans['phase']
@@ -750,9 +756,6 @@ def get_core_feature():
 
     query = pd.merge(query, click, how='left', on='sid')
 
-    query = get_triple_gp(query)
-    query = get_cv_feature(query)
-    query['o_d_pid'] = get_o_d_pid()
 
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0 > 0), 'click_mode']  = 0
     query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0), 'click_mode'] = 0 # -2
@@ -760,16 +763,25 @@ def get_core_feature():
 
     query = query.fillna(0)
     logger.info('Finish fillna')
+
+    query.index = query.sid.astype(int)
+
     return query
 
 @timed()
 @lru_cache()
-@file_cache()
-@reduce_mem()
+##@file_cache()
 def get_feature():
 
-    query = get_core_feature()
+    query = get_feature_core()
 
+    query['o_d_pid'] = get_o_d_pid()
+
+    triple_gp = get_triple_gp()
+    query[triple_gp.columns] = triple_gp
+
+    cv_feature = get_cv_feature()
+    query[cv_feature.columns] = cv_feature
 
     #Make click mode the last col
     click_mode = query.click_mode
@@ -777,8 +789,7 @@ def get_feature():
     query['click_mode'] = click_mode
 
     logger.info('Finish merge click feature')
-    query.index = query.sid
-    query = query.sort_index()
+    query.index = query.sid.astype(int)
     logger.info('Finish set index')
 
     return query
@@ -954,6 +965,9 @@ def remove_col(train, drop_list):
     remove_list.extend([col for col in train.columns if col.endswith('_rank')])
 
     remove_list.extend([col for col in train.columns if col.startswith('s_')])
+
+    #remove_list.extend([col for col in train.columns if col.startswith('cv_')])
+
     # pe_eta_price and so on
     remove_list.extend([col for col in train.columns if '_pe_' in col])
     remove_list.extend([col for col in train.columns if 'ps_' in col])
@@ -965,7 +979,9 @@ def remove_col(train, drop_list):
 
 from core.split import *
 @timed()
-def cv_feat(feature, cols):
+@file_cache()
+@reduce_mem()
+def cv_feat(cols):
     def label_mean(data, feat_set, cols):
         res = np.zeros((data.shape[0], 12))
         for click_mode in range(12):
@@ -974,6 +990,7 @@ def cv_feat(feature, cols):
             res[:, click_mode] = data[[cols]].merge(cols_label, 'left', [cols])['feats'].fillna(0).values
         return pd.DataFrame(res, index=data.index).add_prefix(f'cv_{cols}_')
 
+    feature = get_feature_core()
     feat_set = feature.loc[feature.label == 'train']
     test_set = feature.loc[feature.label == 'test']
 
@@ -984,7 +1001,7 @@ def cv_feat(feature, cols):
     label_fold = pd.DataFrame()
     res_list = []
     from core.split import manual_split
-    kf = manual_split.split_random(feat_set)
+    kf = manual_split.split_sk(feat_set)
     for k, (train_fold, test_fold) in enumerate(kf):
         result_tmp = label_mean(feat_set.iloc[test_fold, :], feat_set.iloc[train_fold, :], cols)
         res_list.append(result_tmp)
@@ -1001,7 +1018,9 @@ def cv_feat(feature, cols):
 
 
 @timed()
-def get_cv_feature(query):
+def get_cv_feature():
+    core = get_feature_core()
+    cv_feature = core.loc[:,['sid']]
     for col in tqdm(['pid', 'o_hash_6',
                 'd_hash_6', 'o_d_hash_6',
                 'o_seq_0',
@@ -1012,18 +1031,18 @@ def get_cv_feature(query):
                 'o_seq_5',
                 'o_seq_6',
                 'o_seq_7', ]):
-        res = cv_feat(query, col)
-        query[res.columns] = res
-    return query
+        res = cv_feat(col)
+        cv_feature[res.columns] = res
+        cv_feature.index = cv_feature.sid.astype(int)
+    return cv_feature
 
 
-@file_cache()
-def get_cat_col():
-    fea = get_feature()
-    return fea.nunique().sort_values()
 
 @timed()
-def get_triple_gp(feature):
+@file_cache()
+@reduce_mem()
+def get_triple_gp():
+    feature = get_feature_core()
 
     feature['sphere_dis_bins'] = pd.cut(feature.sphere_dis, bins=20).cat.codes
     to_group = [
@@ -1041,11 +1060,12 @@ def get_triple_gp(feature):
                 if ('_'.join(gp) + '_agg_count' not in feature.columns):
                     gen.append(gp)
 
-
+    res = feature.loc[:, ['sid']]
     for i in tqdm(gen):
-        feature['_'.join(i) + '_agg_count'] = feature.groupby(i)['pid'].transform('count')
+        res['_'.join(i) + '_agg_count'] = feature.groupby(i)['pid'].transform('count')
 
-    return feature
+    res.index = res.sid.astype(int)
+    return res
 
 
 
@@ -1073,7 +1093,7 @@ def get_plan_analysis_deep():
         tmp = tmp.add_prefix(i + '_').reset_index()
         stat_9 = stat_9.merge(tmp, how='left', on=i)
 
-    data = get_core_feature()
+    data = get_feature_core()
     for i in tqdm(['o_seq_0']):
         tmp = data[[i, 'sphere_dis']].groupby([i]).agg(
             {'sphere_dis': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count],
@@ -1090,11 +1110,15 @@ def get_plan_analysis_deep():
     return stat_9
 
 if __name__ == '__main__':
+    get_feature()
+    get_triple_gp()
     get_o_d_pid()
-    get_core_feature()
+    get_cv_feature()
+    get_feature_core()
+    get_feature()
     get_plan_original_deep() # main
     get_plan_original_wide()
-    get_feature()
+
     """
     nohup python -u  core/feature.py   > feature.log  2>&1 &
     """

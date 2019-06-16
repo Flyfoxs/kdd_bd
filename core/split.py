@@ -1,5 +1,5 @@
 
-from core.feature import get_feature
+from core.feature import get_feature_core
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold, StratifiedKFold, GroupKFold
 from file_cache.utils.util_log import logger
@@ -10,8 +10,8 @@ class manual_split:
 
     @staticmethod
     def split_sk(X_data):
-        feature = get_feature().copy()
-        feature = feature.loc[X_data.index]
+        feature =  get_feature_core().copy()
+        feature = feature.loc[X_data.index.astype(int)]
 
         #feature = feature.reset_index()
 
@@ -34,11 +34,9 @@ class manual_split:
 
     @staticmethod
     def split_range(X_data,  cut_point):
-        feature = get_feature()
-
-        tmp = feature.loc[X_data.index]
-        tmp = tmp.reset_index()
-
+        feature = get_feature_core()
+        feature.index = feature.index.astype(int)
+        tmp = feature.loc[X_data.index.astype(int)]
 
         res = [(tmp[(tmp.day>=0) & (tmp.day<=cut_point-1) ].index,
                  tmp[(tmp.day>=cut_point) & (tmp.day<=60) ].index)]
@@ -46,10 +44,11 @@ class manual_split:
 
     @staticmethod
     def split_group(X_data,  begin_point=0):
-        feature = get_feature()
-        feature = feature.loc[X_data.index]
+        feature = get_feature_core()
+        feature.index = feature.index.astype(int)
+        feature = feature.loc[X_data.index.astype(int)]
 
-        feature = feature.reset_index()
+        #feature = feature.reset_index()
         val = feature[(feature.day >= 54) & (feature.day <= 60)]
         train = feature.loc[(feature.day >= begin_point) & (feature.day < 54)]
 

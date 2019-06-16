@@ -21,7 +21,7 @@ def vali_sub(sub):
 
     if 'recommend_mode' not in sub.columns:
         sub['recommend_mode'] = sub.iloc[:, :12].astype(float).idxmax(axis=1)
-
+    feature.index = feature.index.astype(int)
     choose = sub.join(feature)
 
     col_list = [f'o_seq_{i}' for i in range(7)]
@@ -54,13 +54,13 @@ def vali_sub(sub):
 def gen_sub(file):
     # file = './output/res_False_0.6802.csv'
     res = pd.read_csv(file)
-    res.sid = res.sid.astype(object)
+    res.sid = res.sid.astype(int)
     res = res.set_index('sid')
     res['recommend_mode'] = res.idxmax(axis=1)
 
     feature = get_feature()
     zero_sid = feature[(feature.o_seq_0 == 0) & (feature.click_mode == -1)].index.values
-    res.loc[zero_sid,'recommend_mode'] = 0
+    res.loc[zero_sid.astype(int),'recommend_mode'] = 0
 
     vali_sub(res)
 
@@ -385,7 +385,9 @@ nohup python -u  core/train.py train_ex > base_02_disable_phase1.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > base_13_remove_analysis_deep.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_14.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_16.log 2>&1 &
+
+nohup python -u  core/train.py train_ex > del.log 2>&1 &
 
 nohup python -u  core/train.py train_ex  {} 4_eta_max_p,1_distance_max_p,d_hash_6 > drop_test.log 2>&1 &
 
