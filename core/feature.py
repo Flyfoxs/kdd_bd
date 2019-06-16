@@ -725,8 +725,8 @@ def get_feature_core():
 
     #del plans['plan_time']
 
-    logger.info(query.columns)
-    logger.info( list(plans.columns) )
+    #logger.info(query.columns)
+    #logger.info( list(plans.columns) )
     query = pd.merge(query, plans, how='left', on='sid')
 
     time_gap = (pd.to_datetime(query.plan_time) - pd.to_datetime(query.req_time)).dt.total_seconds()
@@ -790,9 +790,14 @@ def get_feature():
 
     query = get_feature_core()
 
-    query['city'] = get_city_fea()
+    #query['city'] = get_city_fea()
 
     query['o_d_pid'] = get_o_d_pid()
+
+    tmp = pd.read_csv('./input/tmp/phase_2_node2vec.csv')
+    tmp.rename(columns={'node_od': 'o'}, inplace=True)
+    feature = query.merge(tmp, how='left', on='o')
+    #feature.shape
 
     triple_gp = get_triple_gp()
     query[triple_gp.columns] = triple_gp
@@ -970,7 +975,7 @@ def remove_col(train, drop_list):
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
                    'day', 'plan_time', 'sphere_dis', 'en_label', 'time_gap',
-                   'sid',
+                   'sid', 'city'
                    #'10_eta',
 
                    # 's_pid_o_hash_m_per', 's_pid_d_hash_m_per',
@@ -1127,7 +1132,7 @@ def get_plan_analysis_deep():
     return stat_9
 
 if __name__ == '__main__':
-    get_feature()
+    get_feature_core()
     get_triple_gp()
     get_o_d_pid()
     get_cv_feature()
