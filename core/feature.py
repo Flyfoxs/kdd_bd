@@ -433,6 +433,8 @@ def get_query():
 
     train_query['sphere_dis'] = train_query.apply(lambda row: getDistance(row.o0,row.o1, row.d0,row.d1,), axis=1)
 
+    train_query['city'] =  train_query.apply(lambda val: get_city(val.o0, val.o1), axis=1)
+
     for precision in [5,6]:
         train_query[f'o_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.o1, row.o0, precision=precision),
                                                                axis=1)
@@ -768,12 +770,27 @@ def get_feature_core():
 
     return query
 
+@lru_cache()
+def get_city_fea():
+    core = get_feature_core()
+    return core.apply(lambda val: get_city(val.o0, val.o1), axis=1)
+
+def get_city(x, y):
+    d1 = (x-116.41) ** 2 + (y-39.91) ** 2
+    d2 = (x-121.43) ** 2 + (y-31.20) ** 2
+    d3 = (x-114.06) ** 2 + (y-22.54) ** 2
+    d4 = (x-113.26) ** 2 + (y-23.13) ** 2
+    distance = [d1,d2,d3,d4]
+    return np.argmin(distance)
+
 @timed()
 @lru_cache()
 ##@file_cache()
 def get_feature():
 
     query = get_feature_core()
+
+    query['city'] = get_city_fea()
 
     query['o_d_pid'] = get_o_d_pid()
 
