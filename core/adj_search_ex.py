@@ -34,7 +34,7 @@ def find_best_para(file, disable_phase1=True):
 
     global train_cnt
     train_cnt = len(adj)
-    raw_score = f1_score(adj.click_mode.values, adj.iloc[:, :-1].idxmax(axis=1).astype(int), average='weighted')
+    raw_score = f1_score(adj.click_mode.values, adj.iloc[:, :12].idxmax(axis=1).astype(int), average='weighted')
 
 
     from functools import partial
@@ -53,7 +53,7 @@ def find_best_para(file, disable_phase1=True):
         adj.iloc[:, i] = adj.iloc[:, i] * coef_[i]
 
 
-    adj_score = f1_score(adj.click_mode.values, adj.iloc[:, :-1].idxmax(axis=1).astype(int), average='weighted')
+    adj_score = f1_score(adj.click_mode.values, adj.iloc[:, :12].idxmax(axis=1).astype(int), average='weighted')
 
 
     #raw_score, adj_score, best_para
@@ -71,7 +71,7 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
     sub['recommend_mode'] = sub.idxmax(axis=1)
 
     import csv
-    sub.index = pd.Series(sub.index).apply(lambda val: val.split('-')[-1])
+    #sub.index = pd.Series(sub.index).apply(lambda val: val.split('-')[-1])
     sub[['recommend_mode']].to_csv(sub_file, quoting=csv.QUOTE_ALL)
     logger.info(f'>>>>Sub file save to {sub_file}')
 
@@ -84,12 +84,13 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
 
 
 def filter_by_data(df):
-    from  core.feature import get_original
+    from  core.feature import get_query
 
-    query = get_original('train_queries_phase2.csv')
+    query = get_query()
     query.req_time = pd.to_datetime(query.req_time)#.dt.date
-    query = query.loc[(query.phase>=2)&(query.req_time>=pd.to_datetime(begin))&(query.req_time<pd.to_datetime(end)) ]
-    return df.loc[query.sid]
+    query = query.loc[(query.phase==2) & (query.label=='train') & (query.req_time>=pd.to_datetime(begin))  & (query.req_time<pd.to_datetime(end)) ]
+    print(query.shape)
+    return df.loc[df.index.isin(query.sid.astype(int))]
 
 if __name__ == '__main__':
     """
@@ -108,7 +109,8 @@ if __name__ == '__main__':
                   ]:
 
         for input_file in [
-                                './output/stacking/L_2000000_649_0.67398_1011_1320.h5',
+                                './output/stacking/L_2000000_647_0.67005_0951_0951.h5'
+                                #'./output/stacking/L_2000000_649_0.67398_1011_1320.h5', #binary
                                 #'./output/stacking/L_2000000_536_0.66944_1038_1685.h5',
                                 #'./output/stacking/L_2000000_480_0.66449_0629_1672.h5',
                                 #'./output/stacking/L_2000000_336_0.65994_1539_2530.h5', #0.69506305
@@ -126,5 +128,5 @@ if __name__ == '__main__':
 """
 
 
-nohup python -u  core/adj_search_ex.py   > adj_search_bin_13.log 2>&1 &
+nohup python -u  core/adj_search_ex.py   > adj_search.log 2>&1 &
 """
