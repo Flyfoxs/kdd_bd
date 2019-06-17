@@ -28,7 +28,7 @@ def find_best_para(file, disable_phase1=True):
     adj = pd.read_hdf(file, 'train')
     old_len = len(adj)
     if disable_phase1:
-        adj = adj.loc[adj.index.str.startswith('2-')]
+        #adj = adj.loc[adj.index.str.startswith('2-')]
         adj = filter_by_data(adj)
         logger.info(f'only keep {len(adj)} records from {old_len} records')
 
@@ -63,7 +63,7 @@ def find_best_para(file, disable_phase1=True):
 def gen_sub_file(input_file, paras, adj_score, raw_score):
     sub = pd.read_hdf(input_file, 'test')
 
-    sub_file = f'./output/sub/adj_{adj_score:0.5f}_{raw_score:0.6f}_{begin}_{train_cnt}.csv'
+    sub_file = f'./output/sub/ad_{adj_score:6.5f}_{raw_score:6.5f}_{begin}_{train_cnt}.csv'
 
     for i in range(12):
         sub.iloc[:, i] = sub.iloc[:, i] * paras[i]
@@ -86,9 +86,9 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
 def filter_by_data(df):
     from  core.feature import get_original
 
-    query = get_original('train_queries_phase2.csv', 2)
+    query = get_original('train_queries_phase2.csv')
     query.req_time = pd.to_datetime(query.req_time)#.dt.date
-    query = query.loc[(query.req_time>=pd.to_datetime(begin)) &(query.req_time<pd.to_datetime(end)) ]
+    query = query.loc[(query.phase>=2)&(query.req_time>=pd.to_datetime(begin))&(query.req_time<pd.to_datetime(end)) ]
     return df.loc[query.sid]
 
 if __name__ == '__main__':
@@ -99,14 +99,17 @@ if __name__ == '__main__':
 
     index is sid, and DF is sorted by index asc
     """
-    for begin in ['2018-11-10',
-                  #'2018-11-24',
-                  #'2018-11-17', '2018-11-10', '2018-11-03' ,
-                  #'2018-11-22', '2018-11-15', '2018-11-08', '2018-11-01'
+    for begin in [
+                  '2018-11-10',
+                  '2018-11-17',
+                  '2018-11-03',
+                  '2018-11-24',
+                  '2018-11-22', '2018-11-15', '2018-11-08', '2018-11-01'
                   ]:
 
         for input_file in [
-                                './output/stacking/L_2000000_536_0.66944_1038_1685.h5',
+                                './output/stacking/L_2000000_649_0.67398_1011_1320.h5',
+                                #'./output/stacking/L_2000000_536_0.66944_1038_1685.h5',
                                 #'./output/stacking/L_2000000_480_0.66449_0629_1672.h5',
                                 #'./output/stacking/L_2000000_336_0.65994_1539_2530.h5', #0.69506305
                               # './output/stacking/L_1500000_336_0.65318_1470_2220.h5',
@@ -123,5 +126,5 @@ if __name__ == '__main__':
 """
 
 
-nohup python -u  core/adj_search_ex.py   > adj_search_ex_13.log 2>&1 &
+nohup python -u  core/adj_search_ex.py   > adj_search_bin_13.log 2>&1 &
 """
