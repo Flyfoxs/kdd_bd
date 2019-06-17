@@ -144,9 +144,11 @@ def get_paras(para_file='./output/stacking/L_2000000_480_0.66449_0629_1672.h5.pa
 
 def gen_sub_file(input_file, para_file, adj_score, raw_score):
     #paras = get_paras(para_file)
+    partition = get_partition()
 
+    cnt_bin = len(partition.bin_id.value_counts())
     sub = pd.read_hdf(input_file, 'test')
-    sub_file = f'./output/sub/adj_{adj_score:0.5f}_{raw_score:0.6f}_bin.csv'
+    sub_file = f'./output/sub/adj_{adj_score:0.5f}_{raw_score:0.6f}_bin_{cnt_bin}.csv'
 
     sub = get_adj_df(sub, para_file)
 
@@ -179,7 +181,7 @@ def get_partition():
     feature = feature.loc[pd.to_datetime(feature.req_time.dt.date) >= pd.to_datetime('2018-11-10')]
     feature = feature.loc[feature.phase==2]
     feature['bin_name'] = pd.qcut(feature.hour, 3)
-    feature['bin_id']  = 1 #feature.bin_name.cat.codes
+    feature['bin_id']  = 0 #feature.bin_name.cat.codes
     feature.bin_id.value_counts().sort_index()
     return feature.loc[:, ['bin_id', 'phase', 'label']]#.head()
 

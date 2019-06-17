@@ -53,10 +53,12 @@ def check_insert(df: pd.DataFrame, paras):
     return df
 
 
-def adjust_res_ratio(adj, p):
+def evaluate_res_ratio(adj, p):
+    #print('before',adj.sum().sum())
     for i in range(12):
         adj.iloc[:, i] = adj.iloc[:, i] * p[i]
 
+    #print('new',adj.sum().sum())
     adj['recommend_mode'] = adj.iloc[:, :12].idxmax(axis=1)
     score_after = f1_score(adj.click_mode.astype(int), adj.recommend_mode.astype(int), average='weighted')
     return score_after
@@ -64,16 +66,8 @@ def adjust_res_ratio(adj, p):
 
 # file = './output/stacking/L_0.68018_0914_1667.h5'
 @timed()
-def find_best_para(file, disable_phase1=True):
-    df = pd.DataFrame(columns=['paras', 'score'])
-
-    adj = pd.read_hdf(file, 'train')
-    old_len = len(adj)
-    if disable_phase1:
-        adj = adj.loc[adj.index.str.startswith('2-')]
-        adj = filter_by_data(adj)
-        logger.info(f'only keep {len(adj)} records from {old_len} records')
-
+def find_best_para(adj):
+    paras_df = pd.DataFrame(columns=['paras', 'score'])
     global train_cnt
     train_cnt = len(adj)
 
@@ -81,38 +75,43 @@ def find_best_para(file, disable_phase1=True):
 
     lr = 0.1
     for i in range(2000):
-        for paras in get_best_paras(df):
+        for paras in get_best_paras(paras_df):
             # print(type(paras), paras)
             paras = list(paras)
-            df = check_insert(df, paras)
+            paras_df = check_insert(paras_df, paras)
             ##print('===', paras)
             for i in range(12):
                 for times in range(1, 3):
                     new = paras.copy()
                     new[i] = new[i] + lr * times
-                    df = check_insert(df, new)
+                    paras_df = check_insert(paras_df, new)
 
                     new = paras.copy()
                     new[i] = new[i] - lr * times
-                    df = check_insert(df, new)
+                    paras_df = check_insert(paras_df, new)
 
-                    # print('======',df.shape)
-        if len(df.loc[pd.isna(df.score)]) == 0 and lr <= 0.01:
+                    # print('======',paras_df.shape)
+        if len(paras_df.loc[pd.isna(paras_df.score)]) == 0 and lr <= 0.01:
             break
-        elif len(df.loc[pd.isna(df.score)]) == 0:
+        elif len(paras_df.loc[pd.isna(paras_df.score)]) == 0:
             lr = 0.01
 
-        for sn, row in tqdm(df.loc[pd.isna(df.score)].iterrows(),
-                            f'{len(df.loc[pd.isna(df.score)])}/{len(df)} paras need to process with {lr}'):
-            df.loc[sn, 'score'] = adjust_res_ratio(adj.copy(), row['paras'])
+        for sn, row in tqdm(paras_df.loc[pd.isna(paras_df.score)].iterrows(),
+                            f'{len(paras_df.loc[pd.isna(paras_df.score)])}/{len(paras_df)} paras need to process with {lr}'):
+            score = evaluate_res_ratio(adj.copy(), row['paras'])
+            paras_df.loc[sn, 'score'] = score
+            if len(adj) == 0:
+                break
+            #print(f"{score}:{row['paras']}")
 
-        df = df.sort_values('score', ascending=False)
-        print(df.shape)
+    paras_df = paras_df.sort_values('score', ascending=False)
+        #print(paras_df.shape)
 
-    df.to_csv('./output/search_para.csv')
-    print(get_best_paras(df))
-    print(df.head(5))
-    return raw_score, df.iloc[0].score, list(df.iloc[0].paras)
+    paras_df['raw_score'] = raw_score
+    paras_df.to_csv('./output/search_para.csv')
+    #print(get_best_paras(paras_df))
+    #print(paras_df.head(5))
+    return paras_df
 
 
 def gen_sub_file(input_file, paras, adj_score, raw_score):
@@ -149,12 +148,11 @@ def merge_file(input_list):
         df = df / len(input_list)
     return df
 
-def filter_by_data(df):
+def filter_by_data(df, req_time):
     from  core.feature import get_original
-
-    query = get_original('train_queries_phase2.csv', 2)
+    query = get_original('train_queries_phase2.csv')
     query.req_time = pd.to_datetime(query.req_time)#.dt.date
-    query = query.loc[(query.req_time>=pd.to_datetime(begin)) &(query.req_time<pd.to_datetime(end)) ]
+    query = query.loc[ pd.to_datetime(query.req_time.dt.date) == pd.to_datetime(req_time) ]
     return df.loc[query.sid]
 
 if __name__ == '__main__':
@@ -165,22 +163,36 @@ if __name__ == '__main__':
 
     index is sid, and DF is sorted by index asc
     """
-    for begin in ['2018-11-24', '2018-11-17', '2018-11-10', '2018-11-03' ,
-                  '2018-11-22', '2018-11-15', '2018-11-08', '2018-11-01']:
 
-        for input_file in [
-                                './output/stacking/L_2000000_480_0.66449_0629_1672.h5',
-                              './output/stacking/L_2000000_336_0.65994_1539_2530.h5', #0.69506305
+
+    input_file='./output/stacking/L_2000000_480_0.66449_0629_1672.h5'
+
+                              #'./output/stacking/L_2000000_336_0.65994_1539_2530.h5', #0.69506305
                               # './output/stacking/L_1500000_336_0.65318_1470_2220.h5',
                               # './output/stacking/L_1500000_336_0.65328_1129_2425.h5',
 
-                          ][:1]:
-            for disable_phase1 in [True]:
-                raw_score, adj_score, best_para = find_best_para(input_file, disable_phase1)
-                logger.info(
-                    f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f}, best_para:{ best_para }, disable_phase1:{disable_phase1}')
-                gen_sub_file(input_file, best_para, adj_score, raw_score)
-                # break
+    adj = pd.read_hdf(input_file, 'train')
+    old_len = len(adj)
+    adj = adj.loc[adj.index.str.startswith('2-')]
+
+    res_list = []
+
+    for req_time in tqdm(pd.date_range(start='2018-11-10' , end='2018-11-10')):
+            one_day = filter_by_data(adj, req_time)
+            #print(f'one_day shape:{one_day.shape}')
+            logger.info(f'only keep {len(one_day)} records from {old_len} records for: {req_time}')
+
+            paras_df = find_best_para(one_day.copy())
+            paras_df['count']    = len(one_day)
+            paras_df['req_time'] = req_time
+
+            logger.info(f'Estimate {len(paras_df)} paras for: {req_time}')
+
+            res_list.append(paras_df)
+
+    para_file = f'{input_file}.para.h5'
+    pd.concat(res_list).to_hdf(para_file, 'paras')
+    logger.info(f'para save to file:{para_file}')
 
 """
 
