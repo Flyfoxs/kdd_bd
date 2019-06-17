@@ -433,7 +433,7 @@ def get_query():
 
     train_query['sphere_dis'] = train_query.apply(lambda row: getDistance(row.o0,row.o1, row.d0,row.d1,), axis=1)
 
-    train_query['city'] =  train_query.apply(lambda val: get_city(val.o0, val.o1), axis=1)
+    #train_query['city'] =  train_query.apply(lambda val: get_city(val.o0, val.o1), axis=1)
 
     for precision in [5,6]:
         train_query[f'o_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.o1, row.o0, precision=precision),
@@ -444,7 +444,12 @@ def get_query():
 
         train_query[f'o_d_hash_{precision}'] = train_query[f'o_hash_{precision}'] + '_' + train_query[f'd_hash_{precision}']
 
-    return train_query
+    click = get_click()
+    train_query = pd.merge(train_query, click, how='left', on='sid')
+    train_query.loc[train_query.label=='test', 'click_mode'] = -1
+    train_query.click_mode = train_query.click_mode.fillna(0).astype(int)
+
+    return train_query.sort_values('sid')
 
 @timed()
 def get_plan_stati_feature_sid():
@@ -530,7 +535,7 @@ def get_click():
 
     return pd.concat([click_1, click_2])
 
-def get_profile():
+def get_profile(n_topics = 5):
     profile_data = get_original('profiles.csv').astype(int)
     # #profile_data = read_profile_data()
     # x = profile_data.drop(['pid'], axis=1).values
@@ -542,13 +547,13 @@ def get_profile():
     #
     # profile_data = pd.merge(profile_data,svd_feas, on='pid')
 
-    lda = get_profile_lda()
+    lda = get_profile_lda(n_topics)
 
     return pd.concat([profile_data,lda], axis=1)
 
 
 @file_cache()
-def get_profile_lda():
+def get_profile_lda(n_topics):
     def get_profile_text():
         profile = get_original('profiles.csv').astype(int)
         profile = profile.set_index('pid')
@@ -568,7 +573,7 @@ def get_profile_lda():
     #transformer = TfidfTransformer()
     cntTf = vectorizer.fit_transform(profiles)
 
-    n_topics = 5
+
     lda = LatentDirichletAllocation(n_topics=n_topics,
                                     learning_offset=50.,
                                     random_state=666)
@@ -691,7 +696,7 @@ def get_train_test():
 
     click_mode = feature.click_mode
     del feature['click_mode']
-    feature['click_mode'] = click_mode
+    feature['click_mode'] = click_mode.astype(int)
 
     #logger.info(check_exception(feature).head(4))
 
@@ -714,13 +719,14 @@ def get_train_test():
 @reduce_mem()
 def get_feature_core():
     query = get_query()
+    query['city'] =  get_city_fea()
+
     plans = get_plans()
     del plans['phase']
 
     #plan_cat = get_plan_cat()
     #plans.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plans.columns]
 
-    click = get_click()
 
 
     #del plans['plan_time']
@@ -747,7 +753,7 @@ def get_feature_core():
     #query = pd.merge(query, plan_cat, how='left', on='sid')
 
     #if group is not None and 'profile' in group:
-    profile = get_profile()
+    profile = get_profile(5)
     query = pd.merge(query, profile, how='left', on='pid')
 
     #statistics, information
@@ -756,15 +762,12 @@ def get_feature_core():
     query.pid = query.pid.astype(int)
     logger.info('Finish merge stat feature')
 
-    query = pd.merge(query, click, how='left', on='sid')
-
-
-    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & (query.o_seq_0 > 0), 'click_mode']  = 0
-    query.loc[(query.label == 'train') & pd.isna(query.click_mode) & pd.isna(query.o_seq_0), 'click_mode'] = 0 # -2
-    query.click_mode = query.click_mode.fillna(-1).astype(int)
-
     query = query.fillna(0)
     logger.info('Finish fillna')
+
+    click_mode = query.click_mode
+    del query['click_mode']
+    query['click_mode'] = click_mode
 
     query.index = query.sid.astype(int)
 
@@ -772,7 +775,7 @@ def get_feature_core():
 
 @lru_cache()
 def get_city_fea():
-    core = get_feature_core()
+    core = get_query()
     return core.apply(lambda val: get_city(val.o0, val.o1), axis=1)
 
 def get_city(x, y):
@@ -1061,7 +1064,7 @@ def get_cv_feature():
 
 
 @timed()
-@file_cache()
+#@file_cache()
 @reduce_mem()
 def get_triple_gp():
     feature = get_feature_core()
@@ -1132,14 +1135,15 @@ def get_plan_analysis_deep():
     return stat_9
 
 if __name__ == '__main__':
-    get_feature_core()
-    get_triple_gp()
-    get_o_d_pid()
-    get_cv_feature()
-    get_feature_core()
-    get_feature()
-    get_plan_original_deep() # main
-    get_plan_original_wide()
+    get_query()
+    # get_feature_core()
+    # get_triple_gp()
+    # get_o_d_pid()
+    #
+    # get_feature_core()
+    # get_feature()
+    # get_plan_original_deep() # main
+    # get_plan_original_wide()
 
     """
     nohup python -u  core/feature.py   > feature.log  2>&1 &

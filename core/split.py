@@ -19,7 +19,7 @@ class manual_split:
 
         logger.info(f'split_sk:{feature.shape}')
         #check_exception(feature)
-        split_fold = folds.split(feature.values, feature.click_mode.values)
+        split_fold = folds.split(feature.values, feature.click_mode.values.astype(int))
 
         return split_fold
 
