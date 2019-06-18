@@ -32,8 +32,8 @@ def find_best_para(file):
 
     train = pd.read_hdf(file, 'train')
     old_len = len(train)
-    for city in range(1):
-        adj = filter_by_data(train.copy())
+    for city in range(4):
+        adj = filter_by_data(train.copy(), city)
         logger.info(f'only keep {len(adj)} records from {old_len} records for city#{city}')
 
         train_cnt_list.append(len(adj))
@@ -82,12 +82,12 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
     sub = sub.join(query)
 
 
-    sub_file = f'./output/sub/ad2_{adj_score:6.5f}_{raw_score:6.5f}_{begin}_{train_cnt}.csv'
-    for city in range(1):
-        logger.info(f'There are {len(sub)} record will be adjust ')
+    sub_file = f'./output/sub/ad1_{adj_score:6.5f}_{raw_score:6.5f}_{begin}_{train_cnt}.csv'
+    for city in range(4):
+        logger.info(f'There are {len(sub.loc[sub.city==city])} record will be adjust ')
         logger.info(f'Adjust with paras: {paras[city]}')
         for i in range(12):
-            sub.loc[:, str(i)] = sub.loc[:, str(i)] * paras[city][i]
+            sub.loc[sub.city==city, str(i)] = sub.loc[sub.city==city, str(i)] * paras[city][i]
 
     sub['recommend_mode'] = sub.iloc[:, :12].idxmax(axis=1)
 
@@ -104,10 +104,10 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
 #
 
 
-def filter_by_data(df):
+def filter_by_data(df, city):
     query = get_feature_core()
     query.req_time = pd.to_datetime(query.req_time)#.dt.date
-    query = query.loc[ (query.label=='train') & (query.req_time>=pd.to_datetime(begin))  & (query.req_time<pd.to_datetime(end)) ]
+    query = query.loc[(query.city==city) & (query.label=='train') & (query.req_time>=pd.to_datetime(begin))  & (query.req_time<pd.to_datetime(end)) ]
     print(query.shape)
     return df.loc[df.index.isin(query.sid.astype(int))]
 
@@ -148,5 +148,5 @@ if __name__ == '__main__':
 """
 
 
-nohup python -u  core/adj_search_ex.py   > adj_search_without_city.log 2>&1 &
+nohup python -u  core/adj_search_city.py   > adj_search_city.log 2>&1 &
 """

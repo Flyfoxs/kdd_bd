@@ -116,13 +116,13 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
     max_iteration = 0
     min_iteration = 99999
 
-
+    feature_cnt = ()
 
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
         logger.debug(f'======{fold_}')
         #print(train_data.shape,trn_idx.shape, val_idx.shape , X_test.shape,trn_idx.max(), val_idx.max() )
         train_x, train_y, val_x, val_y, X_test = extend_split_feature(train_data, trn_idx, val_idx, orig_X_test, drop_list)
-
+        feature_cnt = train_data.shape[0], train_x.shape[1]
         logger.info(f"fold n°{fold_} BEGIN, cv:{cv},train:{train_x.shape}, val:{val_x.shape}, test:{X_test.shape}, cat:{cate_cols} " )
         trn_data = lgb.Dataset(train_x, train_y, categorical_feature=cate_cols)
         val_data = lgb.Dataset(val_x, val_y , categorical_feature=cate_cols, reference=trn_data)
@@ -208,7 +208,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
     feature_importance_df = feature_importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
     #if cv:
     oof = pd.DataFrame(oof, index=train_data.index, columns=[str(i) for i in range(12)])
-    save_stack_feature(oof, predictions, f'./output/stacking/{version}_{cv}_{"_".join(map(str, train_data.shape))}_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
+    save_stack_feature(oof, predictions, f'./output/stacking/{version}_{cv}_{"_".join(map(str, feature_cnt))}_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
     return predictions, score, feature_importance_df, f'{min_iteration}_{max_iteration}'
 
 def save_stack_feature(train:pd.DataFrame, test:pd.DataFrame, file_path):
@@ -389,7 +389,7 @@ nohup python -u  core/train.py train_ex > base_02_disable_phase1.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > base_13_remove_analysis_deep.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_16_city.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_17_3_st.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > del.log 2>&1 &
 

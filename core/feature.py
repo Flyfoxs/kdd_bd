@@ -390,8 +390,8 @@ def get_plan_original_wide():
     plan_part = pd.merge(base, plan_part, on='sid')
     return plan_part.set_index('sid')
 
-
-
+@timed()
+@lru_cache()
 @file_cache()
 def get_query():
     import geohash as geo
@@ -956,7 +956,7 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list):
             logger.error((col, type_))
 
 
-    logger.info(f'extend_split_feature Train:{train_x.shape}, val:{val_x.shape}, col_list:{list(val_x.columns)}')
+    logger.info(f'====extend_split_feature Train:{train_x.shape}, val:{val_x.shape}, col_list:{list(val_x.columns)}')
     #Drop end
 
     return train_x, train_y, val_x, val_y, X_test
@@ -1092,9 +1092,11 @@ def get_triple_gp():
     res.index = res.sid.astype(int)
     del res['sid']
 
-    from sklearn.preprocessing import StandardScaler
-    res = pd.DataFrame(StandardScaler(res), index = res.index, columns=res.columns)
+    from sklearn.preprocessing import StandardScaler, MinMaxScaler
+    st_res = StandardScaler().fit_transform(res)
+    res = pd.DataFrame(np.round(st_res,6), index = res.index, columns=res.columns)
 
+    print('StandardScaler')
     return res
 
 
