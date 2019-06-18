@@ -1,16 +1,18 @@
 import warnings
 
 from sklearn.metrics import f1_score
-
+from  core.feature import get_query, get_feature_core
 warnings.filterwarnings("ignore")
 
 from file_cache.utils.util_pandas import *
 
 begin = '2018-11-03' # '2018-11-17'
 end = '2018-12-01'
-train_cnt =0
+train_cnt = 0
+train_cnt_list = []
 
-@timed()
+
+#@timed()
 def adjust_res_ratio( p, adj,):
     adj = adj.copy()
     for i in range(12):
@@ -22,53 +24,72 @@ def adjust_res_ratio( p, adj,):
 
 
 @timed()
-def find_best_para(file, disable_phase1=True):
-    #df = pd.DataFrame(columns=['paras', 'score'])
+def find_best_para(file):
+    para_list = []
+    all_click_mode = pd.Series()
+    all_recom_old = pd.Series()
+    all_recom = pd.Series()
 
-    adj = pd.read_hdf(file, 'train')
-    old_len = len(adj)
-    if disable_phase1:
-        #adj = adj.loc[adj.index.str.startswith('2-')]
-        adj = filter_by_data(adj)
-        logger.info(f'only keep {len(adj)} records from {old_len} records')
+    train = pd.read_hdf(file, 'train')
+    old_len = len(train)
+    for city in range(4):
+        adj = filter_by_data(train.copy(), city)
+        logger.info(f'only keep {len(adj)} records from {old_len} records for city#{city}')
 
-    global train_cnt
-    train_cnt = len(adj)
-    raw_score = f1_score(adj.click_mode.values, adj.iloc[:, :12].idxmax(axis=1).astype(int), average='weighted')
+        train_cnt_list.append(len(adj))
+        raw_score = f1_score(adj.click_mode.values, adj.iloc[:, :12].idxmax(axis=1).astype(int), average='weighted')
+        all_recom_old = all_recom_old.append(adj.iloc[:, :12].idxmax(axis=1).astype(int))
 
+        from functools import partial
+        loss_partial = partial(adjust_res_ratio, adj=adj.copy() )
 
-    from functools import partial
-    loss_partial = partial(adjust_res_ratio, adj=adj.copy() )
+        initial_coef = [1.12, 0.9, 0.8, 2.43, 2.9, 0.8, 1.85, 0.93, 1.52, 0.91, 1.33, 1.08]
+        from scipy.optimize import minimize
+        #method = 'nelder-mead'
+        method = 'Powell'
+        coef_ = minimize(loss_partial, initial_coef, method=method)
 
-    initial_coef = [1.12, 0.9, 0.8, 2.43, 2.9, 0.8, 1.85, 0.93, 1.52, 0.91, 1.33, 1.08]
-    from scipy.optimize import minimize
-    #method = 'nelder-mead'
-    method = 'Powell'
-    coef_ = minimize(loss_partial, initial_coef, method=method)
+        print('coef_=', coef_)
 
-    print('coef_=', coef_)
-
-    coef_ =  coef_.x
-    for i in range(12):
-        adj.iloc[:, i] = adj.iloc[:, i] * coef_[i]
-
-
-    adj_score = f1_score(adj.click_mode.values, adj.iloc[:, :12].idxmax(axis=1).astype(int), average='weighted')
+        coef_ =  coef_.x
 
 
+        for i in range(12):
+            adj.iloc[:, i] = adj.iloc[:, i] * coef_[i]
+
+
+        adj_score_city = f1_score(adj.click_mode.values, adj.iloc[:, :12].idxmax(axis=1).astype(int), average='weighted')
+        all_click_mode = all_click_mode.append(adj.click_mode)
+        all_recom = all_recom.append(adj.iloc[:, :12].idxmax(axis=1).astype(int))
+
+        para_list.append(coef_)
+        logger.info(f'for city:{city}, {raw_score} => {adj_score_city}, with para:{coef_}')
+
+    raw_score = f1_score(all_click_mode, all_recom_old, average='weighted')
+    adj_score = f1_score(all_click_mode, all_recom, average='weighted')
+
+    logger.debug(f'Final score for {begin} is {raw_score} => {adj_score}')
+    global  train_cnt
+    train_cnt = sum(train_cnt_list)
     #raw_score, adj_score, best_para
-    return raw_score, adj_score, coef_
+    return raw_score, adj_score, para_list
 
 
 def gen_sub_file(input_file, paras, adj_score, raw_score):
     sub = pd.read_hdf(input_file, 'test')
 
-    sub_file = f'./output/sub/ad_{adj_score:6.5f}_{raw_score:6.5f}_{begin}_{train_cnt}.csv'
+    query = get_feature_core()[['city']]
+    sub = sub.join(query)
 
-    for i in range(12):
-        sub.iloc[:, i] = sub.iloc[:, i] * paras[i]
 
-    sub['recommend_mode'] = sub.idxmax(axis=1)
+    sub_file = f'./output/sub/ad1_{adj_score:6.5f}_{raw_score:6.5f}_{begin}_{train_cnt}.csv'
+    for city in range(4):
+        logger.info(f'There are {len(sub.loc[sub.city==city])} record will be adjust ')
+        logger.info(f'Adjust with paras: {paras[city]}')
+        for i in range(12):
+            sub.loc[sub.city==city, str(i)] = sub.loc[sub.city==city, str(i)] * paras[city][i]
+
+    sub['recommend_mode'] = sub.iloc[:, :12].idxmax(axis=1)
 
     import csv
     #sub.index = pd.Series(sub.index).apply(lambda val: val.split('-')[-1])
@@ -83,12 +104,10 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
 #
 
 
-def filter_by_data(df):
-    from  core.feature import get_query
-
-    query = get_query()
+def filter_by_data(df, city):
+    query = get_feature_core()
     query.req_time = pd.to_datetime(query.req_time)#.dt.date
-    query = query.loc[(query.phase==2) & (query.label=='train') & (query.req_time>=pd.to_datetime(begin))  & (query.req_time<pd.to_datetime(end)) ]
+    query = query.loc[(query.city==city) & (query.label=='train') & (query.req_time>=pd.to_datetime(begin))  & (query.req_time<pd.to_datetime(end)) ]
     print(query.shape)
     return df.loc[df.index.isin(query.sid.astype(int))]
 
@@ -118,12 +137,12 @@ if __name__ == '__main__':
                               # './output/stacking/L_1500000_336_0.65328_1129_2425.h5',
 
                           ][:1]:
-            for disable_phase1 in [True]:
-                raw_score, adj_score, best_para = find_best_para(input_file, disable_phase1)
-                logger.info(
-                    f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f}, best_para:{ best_para }, disable_phase1:{disable_phase1}')
-                gen_sub_file(input_file, best_para, adj_score, raw_score)
-                # break
+
+            raw_score, adj_score, best_para = find_best_para(input_file)
+            logger.info(
+                f'{input_file},raw_score:{raw_score:0.5f},adj_score:{adj_score:0.5f},\n=== best_para:{ best_para }')
+            gen_sub_file(input_file, best_para, adj_score, raw_score)
+            # break
 
 """
 

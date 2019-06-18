@@ -1,5 +1,5 @@
 
-from core.feature import get_feature_core
+from core.feature import get_query
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold, StratifiedKFold, GroupKFold
 from file_cache.utils.util_log import logger
@@ -10,7 +10,7 @@ class manual_split:
 
     @staticmethod
     def split_sk(X_data):
-        feature =  get_feature_core().copy()
+        feature =  get_query().copy()
         feature = feature.loc[X_data.index.astype(int)]
 
         #feature = feature.reset_index()
@@ -34,7 +34,7 @@ class manual_split:
 
     @staticmethod
     def split_range(X_data,  cut_point):
-        feature = get_feature_core()
+        feature = get_query()
         feature.index = feature.index.astype(int)
         tmp = feature.loc[X_data.index.astype(int)]
 
@@ -44,7 +44,7 @@ class manual_split:
 
     @staticmethod
     def split_group(X_data,  begin_point=0):
-        feature = get_feature_core()
+        feature = get_query()
         feature.index = feature.index.astype(int)
         feature = feature.loc[X_data.index.astype(int)]
 

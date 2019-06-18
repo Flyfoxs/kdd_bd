@@ -65,7 +65,7 @@ def gen_sub(file):
     vali_sub(res)
 
     import csv
-    sub_file = file.replace('res', 'sub/sub')
+    sub_file = file.replace('res', f'sub/{version}_sub')
     res[['recommend_mode']].to_csv(sub_file, quoting=csv.QUOTE_ALL)
     logger.info(f'Sub file save to {sub_file}')
 
@@ -144,6 +144,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
             'objective': 'multiclass',
             'metric': 'None',
             'num_class': num_class,
+            'random_state': 2019,
             # 'device':'gpu',
             # 'gpu_platform_id': 1, 'gpu_device_id': 0
         }
@@ -152,6 +153,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
         logger.info(params)
 
         num_round = 30000
+        #num_round = 10
         verbose_eval = 50
         clf = lgb.train(params,
                         trn_data,
@@ -206,7 +208,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
     feature_importance_df = feature_importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
     #if cv:
     oof = pd.DataFrame(oof, index=train_data.index, columns=[str(i) for i in range(12)])
-    save_stack_feature(oof, predictions, f'./output/stacking/L_{cv}_{"_".join(map(str, train_data.shape))}_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
+    save_stack_feature(oof, predictions, f'./output/stacking/{version}_{cv}_{"_".join(map(str, train_data.shape))}_{score:0.5f}_{min_iteration:04}_{max_iteration:04}.h5')
     return predictions, score, feature_importance_df, f'{min_iteration}_{max_iteration}'
 
 def save_stack_feature(train:pd.DataFrame, test:pd.DataFrame, file_path):
@@ -308,7 +310,7 @@ def train_ex(args={}, drop_list='' ):
     train_data, X_test = get_train_test()
     #train_data = train_data.sample(frac=0.1, random_state=2019 )
 
-    for cv in [True, False]:
+    for cv in [True]:
         res, score, feature_importance, best_iteration = train_lgb(train_data, X_test, cv=cv, args=args, drop_list=drop_list )
         #logger.info(f'score:{score:0.6f}, drop_col:{",".join(drop_list)}')
         feature_nums = len(feature_importance.feature.value_counts())
@@ -355,6 +357,7 @@ def adjust_res(adj, p):
 
 
 if __name__ == '__main__':
+
     fire.Fire()
     # train_ex()
     # search()
@@ -390,7 +393,7 @@ nohup python -u  core/train.py train_ex > base_16_city.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > del.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_17_val.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_17_val_1.log 2>&1 &
 
 nohup python -u  core/train.py train_ex  {} 4_eta_max_p,1_distance_max_p,d_hash_6 > drop_test.log 2>&1 &
 

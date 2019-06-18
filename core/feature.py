@@ -1090,6 +1090,11 @@ def get_triple_gp():
         res['_'.join(i) + '_agg_count'] = feature.groupby(i)['pid'].transform('count')
 
     res.index = res.sid.astype(int)
+    del res['sid']
+
+    from sklearn.preprocessing import StandardScaler
+    res = pd.DataFrame(StandardScaler(res), index = res.index, columns=res.columns)
+
     return res
 
 
