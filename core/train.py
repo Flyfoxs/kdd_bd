@@ -218,6 +218,7 @@ def save_stack_feature(train:pd.DataFrame, test:pd.DataFrame, file_path):
     train_label['click_mode'] = feature.loc[train_label.index.values, 'click_mode']
     train_label.to_hdf(file_path,'train',mode='a')
     test.to_hdf(file_path, 'test', mode='a')
+    logger.info(f'OOF file save to :{file_path}')
 
 
 def plot_import(feature_importance):
@@ -403,7 +404,7 @@ nohup python -u  core/train.py search_droplist > search_droplist_3.log 2>&1 &
 nohup python -u  core/train.py search_manual > search_manual.log 2>&1 &
 
 
-
-nohup python -u  core/train.py train_ex {} [] {0:1, 3:1, 4:1, 6:1, 9:1 } >> search.log 2>&1 &
-nohup python -u  core/train.py train_ex {} [] {0:1.1, 3:1.1, 4:1.1, 6:1.1, 9:1.1 } >> search.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_18_none_5.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_18_stand_7.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_18_minmax_6.log 2>&1 &
 """

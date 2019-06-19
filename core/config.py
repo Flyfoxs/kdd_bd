@@ -19,8 +19,8 @@ val_cut_point = 60 - 7
 hash_precision = [6]
 
 type_dict = {
-    'sid': 'str',
-    'pid': 'str',
+    'sid': 'int',
+    'pid': 'int',
 
     'day': 'int',
     'weekday': 'int',
@@ -31,7 +31,7 @@ type_dict = {
     'd0': 'float',
     'd1': 'float',
 
-    'click_mode': 'str'
+    'click_mode': 'int'
 }
 
 cate_cols = ['weekend', 'weekday','phase']

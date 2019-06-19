@@ -797,10 +797,10 @@ def get_feature():
 
     query['o_d_pid'] = get_o_d_pid()
 
-    tmp = pd.read_csv('./input/tmp/phase_2_node2vec.csv')
-    tmp.rename(columns={'node_od': 'o'}, inplace=True)
-    feature = query.merge(tmp, how='left', on='o')
-    #feature.shape
+    # tmp = pd.read_csv('./input/tmp/phase_2_node2vec.csv')
+    # tmp.rename(columns={'node_od': 'o'}, inplace=True)
+    # feature = query.merge(tmp, how='left', on='o')
+    # #feature.shape
 
     triple_gp = get_triple_gp()
     query[triple_gp.columns] = triple_gp
@@ -1092,11 +1092,12 @@ def get_triple_gp():
     res.index = res.sid.astype(int)
     del res['sid']
 
-    from sklearn.preprocessing import StandardScaler, MinMaxScaler
-    st_res = StandardScaler().fit_transform(res)
-    res = pd.DataFrame(np.round(st_res,6), index = res.index, columns=res.columns)
+    # from sklearn.preprocessing import StandardScaler, MinMaxScaler
+    # ss = MinMaxScaler()
+    # logger.info(f'Scaler with:{type(ss).__name__}')
+    # st_res = ss.fit_transform(res)
+    # res = pd.DataFrame(np.round(st_res,6), index = res.index, columns=res.columns)
 
-    print('StandardScaler')
     return res
 
 
