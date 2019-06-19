@@ -801,7 +801,7 @@ def get_feature():
 
     # tmp = pd.read_csv('./input/tmp/phase_2_node2vec.csv')
     # tmp.rename(columns={'node_od': 'o'}, inplace=True)
-    # feature = query.merge(tmp, how='left', on='o')
+    # query = query.merge(tmp, how='left', on='o')
     # #feature.shape
 
     triple_gp = get_triple_gp()
@@ -1057,7 +1057,9 @@ def get_cv_feature():
                 'o_seq_4',
                 'o_seq_5',
                 'o_seq_6',
-                'o_seq_7', ]):
+                'o_seq_7',
+                    # 'city'
+                     ]):
         res = cv_feat(col)
         cv_feature[res.columns] = res
         cv_feature.index = cv_feature.sid.astype(int)
