@@ -449,7 +449,8 @@ def get_query():
     train_query.loc[train_query.label=='test', 'click_mode'] = -1
     train_query.click_mode = train_query.click_mode.fillna(0).astype(int)
 
-    return train_query.sort_values('sid')
+    train_query.index = train_query.sid
+    return train_query.sort_index()
 
 @timed()
 def get_plan_stati_feature_sid():
@@ -574,7 +575,7 @@ def get_profile_lda(n_topics):
     cntTf = vectorizer.fit_transform(profiles)
 
 
-    lda = LatentDirichletAllocation(n_topics=n_topics,
+    lda = LatentDirichletAllocation(n_components=n_topics,
                                     learning_offset=50.,
                                     random_state=666)
     docres = lda.fit_transform(cntTf)
@@ -719,6 +720,7 @@ def get_train_test():
 @reduce_mem()
 def get_feature_core():
     query = get_query()
+    del query['click_time']
     query['city'] =  get_city_fea()
 
     plans = get_plans()
@@ -841,9 +843,9 @@ def getDistance(latA, lonA, latB, lonB):
         c2 = (sin(x) + x) * (sin(pA) - sin(pB)) ** 2 / sin(x / 2) ** 2
         dr = flatten / 8 * (c1 - c2)
         distance = ra * (x + dr)
-        return distance  # meter
+        return round(distance)  # meter
     except:
-        return 0.0000001
+        return 1
 
 
 

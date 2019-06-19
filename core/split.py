@@ -41,34 +41,34 @@ class manual_split:
         res = [(tmp[(tmp.day>=0) & (tmp.day<=cut_point-1) ].index,
                  tmp[(tmp.day>=cut_point) & (tmp.day<=60) ].index)]
         return res
+    #
+    # @staticmethod
+    # def split_group(X_data,  begin_point=0):
+    #     feature = get_query()
+    #     feature.index = feature.index.astype(int)
+    #     feature = feature.loc[X_data.index.astype(int)]
+    #
+    #     #feature = feature.reset_index()
+    #     val = feature[(feature.day >= 54) & (feature.day <= 60)]
+    #     train = feature.loc[(feature.day >= begin_point) & (feature.day < 54)]
+    #
+    #
+    #     folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
+    #     split_fold = folds.split(train.values, train.click_mode.values)
+    #
+    #     res = []
+    #     for trn_inx, _ in tqdm((split_fold), 'Split group'):
+    #
+    #         res.append((train.iloc[trn_inx].index, val.index))
+    #     return tqdm(res, f'split_group:{begin_point},{len(val)}')
 
-    @staticmethod
-    def split_group(X_data,  begin_point=0):
-        feature = get_query()
-        feature.index = feature.index.astype(int)
-        feature = feature.loc[X_data.index.astype(int)]
-
-        #feature = feature.reset_index()
-        val = feature[(feature.day >= 54) & (feature.day <= 60)]
-        train = feature.loc[(feature.day >= begin_point) & (feature.day < 54)]
-
-
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
-        split_fold = folds.split(train.values, train.click_mode.values)
-
-        res = []
-        for trn_inx, _ in tqdm((split_fold), 'Split group'):
-
-            res.append((train.iloc[trn_inx].index, val.index))
-        return tqdm(res, f'split_group:{begin_point},{len(val)}')
-
-
-    @staticmethod
-    def split_random(X_data):
-        kf = KFold(n_splits=5,
-                   shuffle=True,
-                   random_state=2019).split(X_data)
-        return kf
+    #
+    # @staticmethod
+    # def split_random(X_data):
+    #     kf = KFold(n_splits=5,
+    #                shuffle=True,
+    #                random_state=2019).split(X_data)
+    #     return kf
 
 if __name__ == '__main__' :
     for i in range(5):

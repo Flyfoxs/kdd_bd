@@ -20,7 +20,7 @@ hash_precision = [6]
 
 type_dict = {
     'sid': 'int',
-    'pid': 'int',
+    'pid': 'str',
 
     'day': 'int',
     'weekday': 'int',

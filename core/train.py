@@ -407,4 +407,6 @@ nohup python -u  core/train.py search_manual > search_manual.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_none_5.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_stand_7.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_minmax_6.log 2>&1 &
+
+nohup python -u  core/train.py train_ex > base_19_sid_int.log 2>&1 &
 """
