@@ -967,7 +967,7 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list):
     del train['click_mode']
     train['click_mode'] = click_mode
 
-    train = train.loc[train.city == 2]
+    #train = train.loc[train.city == 2]
     train_x = train.iloc[:, :-1]
     train_y = train.click_mode
 
