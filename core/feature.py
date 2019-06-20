@@ -823,8 +823,8 @@ def get_feature():
     triple_gp = get_triple_gp()
     query[triple_gp.columns] = triple_gp
 
-    # bin_gp = get_bin_gp()
-    # query[bin_gp.columns] = bin_gp
+    bin_gp = get_bin_gp()
+    query[bin_gp.columns] = bin_gp
 
     cv_feature = get_cv_feature()
     query[cv_feature.columns] = cv_feature
@@ -837,6 +837,7 @@ def get_feature():
     logger.info('Finish merge click feature')
     query.index = query.sid.astype(int)
     logger.info('Finish set index')
+
 
     return query
 
@@ -945,8 +946,10 @@ def sample_ex(df):
 
 @timed()
 def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list):
-    val_x = df.iloc[val_idx, :-1]
-    val_y = df.iloc[val_idx].click_mode
+    val = df.iloc[val_idx].copy()
+    val = val.loc[val.city == 2]
+    val_x = val.iloc[:, :-1]
+    val_y = val.click_mode
 
     logger.info(f'There are {len(val_x.day.value_counts())} days, {len(val_x)} rows records for validate')
 
@@ -964,12 +967,14 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list):
     del train['click_mode']
     train['click_mode'] = click_mode
 
+    train = train.loc[train.city == 2]
     train_x = train.iloc[:, :-1]
     train_y = train.click_mode
 
     train_x = remove_col(train_x, drop_list).fillna(0)
     val_x   = remove_col(val_x, drop_list).fillna(0)
     X_test = remove_col(X_test, drop_list).fillna(0)
+    X_test = X_test.loc[X_test.city == 2]
 
 
     for col, type_ in val_x.dtypes.sort_values().iteritems():
@@ -1015,8 +1020,8 @@ def remove_col(train, drop_list):
     #remove_list.extend([col for col in train.columns if col.startswith('cv_')])
 
     # pe_eta_price and so on
-    remove_list.extend([col for col in train.columns if '_pe_' in col])
-    remove_list.extend([col for col in train.columns if 'ps_' in col])
+    #remove_list.extend([col for col in train.columns if '_pe_' in col])
+    #remove_list.extend([col for col in train.columns if 'ps_' in col])
     # remove_list.extend([col for col in [ f'{i}_transport_mode' for i in range(1, 12)]])
     logger.info(f'Final remove list:{remove_list}')
     train = train.drop(remove_list, axis=1, errors='ignore')
