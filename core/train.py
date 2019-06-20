@@ -144,7 +144,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
             'objective': 'multiclass',
             'metric': 'None',
             'num_class': num_class,
-            'random_state': 2019,
+            #'random_state': 2019,
             # 'device':'gpu',
             # 'gpu_platform_id': 1, 'gpu_device_id': 0
         }
@@ -408,5 +408,5 @@ nohup python -u  core/train.py train_ex > base_18_none_5.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_stand_7.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_minmax_6.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_19_C.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_20_city.log 2>&1 &
 """

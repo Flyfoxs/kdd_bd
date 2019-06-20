@@ -2,7 +2,7 @@ input_folder = './input/data_set_phase2'
 
 disable_phase1 = False
 
-version='C'
+version='bin'
 
 plan_items = ['distance', 'eta', 'price', 'transport_mode']
 
@@ -34,7 +34,7 @@ type_dict = {
     'click_mode': 'int'
 }
 
-cate_cols = ['weekend', 'weekday','phase']
+cate_cols = ['weekend', 'weekday','city']
 
 good_col = [
     '6_distance_max_p', '1_price_max_p', 'profile_lda_1', '6_eta_max_p', '4_price', '2_eta', 'glb_sugg_o_6_per',

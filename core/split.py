@@ -9,13 +9,13 @@ class manual_split:
 
 
     @staticmethod
-    def split_sk(X_data):
+    def split_sk(X_data, n_splits=5):
         feature =  get_query().copy()
         feature = feature.loc[X_data.index.astype(int)]
 
-        #feature = feature.reset_index()
+        #feature = feature.dropna(how='any')
 
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=2019)
+        folds = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=2019)
 
         logger.info(f'split_sk:{feature.shape}')
         #check_exception(feature)
@@ -24,9 +24,9 @@ class manual_split:
         return split_fold
 
     @staticmethod
-    def split(X_data, cv):
+    def split(X_data, cv, n_splits=5):
         if cv:
-            return manual_split.split_sk(X_data)
+            return manual_split.split_sk(X_data, n_splits)
         else:
             return manual_split.split_range(X_data, 47)
             #return manual_split.split_range(X_data, 54)

@@ -807,6 +807,9 @@ def get_feature():
     triple_gp = get_triple_gp()
     query[triple_gp.columns] = triple_gp
 
+    bin_gp = get_bin_gp()
+    query[bin_gp.columns] = bin_gp
+
     cv_feature = get_cv_feature()
     query[cv_feature.columns] = cv_feature
 
@@ -980,7 +983,7 @@ def remove_col(train, drop_list):
     remove_list = ['o_d_hash_5', 'd_hash_5', 'o_hash_5', 'plans',
                    'o', 'd', 'label', 'req_time', 'click_time', 'date',
                    'day', 'plan_time', 'sphere_dis', 'en_label', 'time_gap',
-                   'sid', 'city'
+                   'sid', 'phase'
                    #'10_eta',
 
                    # 's_pid_o_hash_m_per', 's_pid_d_hash_m_per',
@@ -1104,6 +1107,43 @@ def get_triple_gp():
 
     return res
 
+
+@timed()
+#@file_cache()
+@reduce_mem()
+def get_bin_gp():
+    feature = get_feature_core()
+
+    feature['sphere_dis_bins'] = pd.cut(feature.sphere_dis, bins=20).cat.codes
+    to_group = [
+        'pid', 'o', 'd', 'o0', 'o1', 'd0', 'd1', 'weekday',
+        'weekend', 'hour', 'sphere_dis_bins'
+        # 'req_time_dow', 'req_is_weekend', 'sphere_dis_bins', 'odl2_dis_bins',
+        # 'Recommand_0_transport_mode','Recommand_1_transport_mode','Recommand_2_transport_mode','price_inMin_0_transport_mode'
+    ]
+
+    gen = []
+    for i in tqdm(range(len(to_group))):
+        for j in range(i + 1, len(to_group)):
+            #for k in range(j + 1, len(to_group)):
+                gp = [to_group[i], to_group[j]]
+                if ('_'.join(gp) + '_agg_count' not in feature.columns):
+                    gen.append(gp)
+
+    res = feature.loc[:, ['sid']]
+    for i in tqdm(gen):
+        res['_'.join(i) + '_agg_count'] = feature.groupby(i)['pid'].transform('count')
+
+    res.index = res.sid.astype(int)
+    del res['sid']
+
+    # from sklearn.preprocessing import StandardScaler, MinMaxScaler
+    # ss = MinMaxScaler()
+    # logger.info(f'Scaler with:{type(ss).__name__}')
+    # st_res = ss.fit_transform(res)
+    # res = pd.DataFrame(np.round(st_res,6), index = res.index, columns=res.columns)
+
+    return res
 
 
 @timed()
