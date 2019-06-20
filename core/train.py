@@ -409,4 +409,7 @@ nohup python -u  core/train.py train_ex > base_18_stand_7.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_minmax_6.log 2>&1 &
 
 nohup python -u  core/train.py train_ex > base_20_city.log 2>&1 &
+
+
+nohup python -u  core/train.py train_ex > base_20_remove_2tuple.log 2>&1 &
 """

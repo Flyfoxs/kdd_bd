@@ -788,6 +788,21 @@ def get_city(x, y):
     distance = [d1,d2,d3,d4]
     return np.argmin(distance)
 
+
+@timed()
+@file_cache()
+def get_direction():
+    query = get_query()
+    def bearing_array(lat1, lng1, lat2, lng2):
+        #AVG_EARTH_RADIUS = 6378.137  # in km
+        lng_delta_rad = np.radians(lng2 - lng1)
+        lat1, lng1, lat2, lng2 = map(np.radians, (lat1, lng1, lat2, lng2))
+        y = np.sin(lng_delta_rad) * np.cos(lat2)
+        x = np.cos(lat1) * np.sin(lat2) - np.sin(lat1) * np.cos(lat2) * np.cos(lng_delta_rad)
+        return np.degrees(np.arctan2(y, x))
+
+    return query.apply(lambda row: bearing_array(row.o0,row.o1, row.d0,row.d1,), axis=1)
+
 @timed()
 @lru_cache()
 ##@file_cache()
@@ -798,6 +813,7 @@ def get_feature():
     #query['city'] = get_city_fea()
 
     query['o_d_pid'] = get_o_d_pid()
+    # query['direction'] = get_direction()
 
     # tmp = pd.read_csv('./input/tmp/phase_2_node2vec.csv')
     # tmp.rename(columns={'node_od': 'o'}, inplace=True)
@@ -807,8 +823,8 @@ def get_feature():
     triple_gp = get_triple_gp()
     query[triple_gp.columns] = triple_gp
 
-    bin_gp = get_bin_gp()
-    query[bin_gp.columns] = bin_gp
+    # bin_gp = get_bin_gp()
+    # query[bin_gp.columns] = bin_gp
 
     cv_feature = get_cv_feature()
     query[cv_feature.columns] = cv_feature
@@ -1188,6 +1204,7 @@ def get_plan_analysis_deep():
 
 if __name__ == '__main__':
     get_query()
+    get_direction()
     # get_feature_core()
     # get_triple_gp()
     # get_o_d_pid()
