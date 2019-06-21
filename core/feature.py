@@ -947,7 +947,7 @@ def sample_ex(df):
 @timed()
 def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list):
     val = df.iloc[val_idx].copy()
-    val = val.loc[val.city == 2]
+
     val_x = val.iloc[:, :-1]
     val_y = val.click_mode
 
@@ -967,14 +967,14 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list):
     del train['click_mode']
     train['click_mode'] = click_mode
 
-    #train = train.loc[train.city == 2]
+
     train_x = train.iloc[:, :-1]
     train_y = train.click_mode
 
     train_x = remove_col(train_x, drop_list).fillna(0)
     val_x   = remove_col(val_x, drop_list).fillna(0)
     X_test = remove_col(X_test, drop_list).fillna(0)
-    X_test = X_test.loc[X_test.city == 2]
+
 
 
     for col, type_ in val_x.dtypes.sort_values().iteritems():

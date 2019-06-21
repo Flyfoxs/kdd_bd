@@ -82,7 +82,7 @@ def gen_sub_file(input_file, paras, adj_score, raw_score):
     sub = sub.join(query)
 
 
-    sub_file = f'./output/sub/ad2_{adj_score:6.5f}_{raw_score:6.5f}_{begin}_{train_cnt}.csv'
+    sub_file = f'./output/sub/ad6_av_{adj_score:6.5f}_{raw_score:6.5f}_{begin}_{train_cnt}.csv'
     for city in range(1):
         logger.info(f'There are {len(sub)} record will be adjust ')
         logger.info(f'Adjust with paras: {paras[city]}')
@@ -120,15 +120,20 @@ if __name__ == '__main__':
     index is sid, and DF is sorted by index asc
     """
     for begin in [
-                  '2018-11-10',
-                  '2018-11-17',
-                  '2018-11-03',
-                  '2018-11-24',
-                  '2018-11-22', '2018-11-15', '2018-11-08', '2018-11-01'
+                  #'2018-11-15',
+                  #'2018-11-14',
+                   '2018-11-24'
+                  #'2018-11-17','2018-11-20',
+            
+                  #'2018-10-01',
+                  # '2018-11-03',
+                  # '2018-11-24',
+                  # '2018-11-22', '2018-11-15', '2018-11-08', '2018-11-01'
                   ]:
 
         for input_file in [
-                                './output/stacking/L_True_2000000_649_0.66997_1035_1524.h5',
+                                './output/stacking/avg.h5',
+                                #'./output/stacking/L_True_2000000_649_0.66997_1035_1524.h5',
                                 #'./output/stacking/L_2000000_647_0.67005_0951_0951.h5',
                                 #'./output/stacking/L_2000000_649_0.67398_1011_1320.h5', #binary
                                 #'./output/stacking/L_2000000_536_0.66944_1038_1685.h5',
@@ -148,5 +153,5 @@ if __name__ == '__main__':
 """
 
 
-nohup python -u  core/adj_search_ex.py   > adj_search_without_city.log 2>&1 &
+nohup python -u  core/adj_search_ex.py   > adj_search_avg_21_24.log 2>&1 &
 """

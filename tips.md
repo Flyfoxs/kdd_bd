@@ -43,3 +43,11 @@ test:    304916
 
 完全一样的数据,直接copy
 
+
+二元组
+nomalization
+stacking
+删除数据再次确认
+city 重新排序
+或者city 向量化
+或者city category
