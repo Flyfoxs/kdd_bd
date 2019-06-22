@@ -2,10 +2,13 @@ import json
 import warnings
 from functools import lru_cache
 
+
+
 from deprecated import deprecated
 from file_cache.cache import file_cache
 from file_cache.utils.reduce_mem import *
 from file_cache.utils.util_pandas import *
+from file_cache.utils.util_log import timed_bolck
 from sklearn.decomposition import TruncatedSVD
 
 from core.config import *
@@ -401,34 +404,38 @@ def get_query():
     day_ = day_ - min(day_)
     day_ = day_.dt.days
 
-    train_query['day']  = day_
-    train_query['weekday'] = train_query.req_time.dt.weekday
-    train_query['hour'] = train_query.req_time.dt.hour
-    train_query['weekend'] = train_query.weekday // 5
+    with timed_bolck('request_time_process'):
+        train_query['day']  = day_
+        train_query['weekday'] = train_query.req_time.dt.weekday
+        train_query['hour'] = train_query.req_time.dt.hour
+        train_query['weekend'] = train_query.weekday // 5
 
-    train_query['o0'] = train_query.o.apply(lambda item: item.split(',')[0]).astype(float)
-    train_query['o1'] = train_query.o.apply(lambda item: item.split(',')[1]).astype(float)
+    with timed_bolck('o_d_address_process'):
+        train_query['o0'] = train_query.o.apply(lambda item: item.split(',')[0]).astype(float)
+        train_query['o1'] = train_query.o.apply(lambda item: item.split(',')[1]).astype(float)
 
-    train_query['d0'] = train_query.d.apply(lambda item: item.split(',')[0]).astype(float)
-    train_query['d1'] = train_query.d.apply(lambda item: item.split(',')[1]).astype(float)
+        train_query['d0'] = train_query.d.apply(lambda item: item.split(',')[0]).astype(float)
+        train_query['d1'] = train_query.d.apply(lambda item: item.split(',')[1]).astype(float)
 
-    train_query['sphere_dis'] = train_query.apply(lambda row: getDistance(row.o0,row.o1, row.d0,row.d1,), axis=1)
+        train_query['sphere_dis'] = train_query.apply(lambda row: getDistance(row.o0,row.o1, row.d0,row.d1,), axis=1)
 
     #train_query['city'] =  train_query.apply(lambda val: get_city(val.o0, val.o1), axis=1)
 
-    for precision in [5,6]:
-        train_query[f'o_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.o1, row.o0, precision=precision),
-                                                               axis=1)
+    with timed_bolck('hash_geo_convert'):
+        for precision in [5,6]:
+            train_query[f'o_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.o1, row.o0, precision=precision),
+                                                                   axis=1)
 
-        train_query[f'd_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.d1, row.d0, precision=precision),
-                                                               axis=1)
+            train_query[f'd_hash_{precision}'] = train_query.apply(lambda row: geo.encode(row.d1, row.d0, precision=precision),
+                                                                   axis=1)
 
-        train_query[f'o_d_hash_{precision}'] = train_query[f'o_hash_{precision}'] + '_' + train_query[f'd_hash_{precision}']
+            train_query[f'o_d_hash_{precision}'] = train_query[f'o_hash_{precision}'] + '_' + train_query[f'd_hash_{precision}']
 
-    click = get_click()
-    train_query = pd.merge(train_query, click, how='left', on='sid')
-    train_query.loc[train_query.label=='test', 'click_mode'] = -1
-    train_query.click_mode = train_query.click_mode.fillna(0).astype(int)
+    with timed_bolck('request_join_click'):
+        click = get_click()
+        train_query = pd.merge(train_query, click, how='left', on='sid')
+        train_query.loc[train_query.label=='test', 'click_mode'] = -1
+        train_query.click_mode = train_query.click_mode.fillna(0).astype(int)
 
     train_query.index = train_query.sid
     return train_query.sort_index()
