@@ -287,9 +287,9 @@ def get_plans():
     #todo plan_stati
     plan = pd.concat([plan, plan_pg, seq, plan_stati], axis=1)
 
-    plan.index.name = 'sid'
+    plan['sid'] = plan.index
 
-    return plan.reset_index()
+    return plan
 
 
 @deprecated
@@ -439,6 +439,7 @@ def get_query():
         del train_query['click_time']
 
     train_query.index = train_query.sid
+    train_query.index.name = 'index'
     return train_query.sort_index()
 
 @timed()
