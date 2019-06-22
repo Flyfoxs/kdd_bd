@@ -436,6 +436,7 @@ def get_query():
         train_query = pd.merge(train_query, click, how='left', on='sid')
         train_query.loc[train_query.label=='test', 'click_mode'] = -1
         train_query.click_mode = train_query.click_mode.fillna(0).astype(int)
+        del train_query['click_time']
 
     train_query.index = train_query.sid
     return train_query.sort_index()
@@ -707,7 +708,7 @@ def get_train_test():
 @reduce_mem()
 def get_feature_core():
     query = get_query()
-    del query['click_time']
+
     query['city'] =  get_city_fea()
 
     plans = get_plans()
@@ -722,19 +723,21 @@ def get_feature_core():
 
     #logger.info(query.columns)
     #logger.info( list(plans.columns) )
-    query = pd.merge(query, plans, how='left', on='sid')
+    with timed_bolck('Merge query plan'):
+        query = pd.merge(query, plans, how='left', on='sid')
 
-    time_gap = (pd.to_datetime(query.plan_time) - pd.to_datetime(query.req_time)).dt.total_seconds()
-    query['time_gap'] = time_gap.where(time_gap >= 0, -1)
+        time_gap = (pd.to_datetime(query.plan_time) - pd.to_datetime(query.req_time)).dt.total_seconds()
+        query['time_gap'] = time_gap.where(time_gap >= 0, -1)
 
-    #Fix the distance precision issue
-    query.loc[query.sphere_dis <= 10, 'sphere_dis' ] = query.loc[query.sphere_dis <= 10, 'ps_distance_min']
+        #Fix the distance precision issue
+        query.loc[query.sphere_dis <= 10, 'sphere_dis' ] = query.loc[query.sphere_dis <= 10, 'ps_distance_min']
 
-    for direct in ['o']:
-        precision = 6
-        gp_level = [f'{direct}_hash_{precision}']
-        geo_hash = get_geo_percentage(query, direct, gp_level, )
-        query = pd.merge(query, geo_hash, how='left', on=gp_level)
+    with timed_bolck('Merge geo_percentage'):
+        for direct in ['o']:
+            precision = 6
+            gp_level = [f'{direct}_hash_{precision}']
+            geo_hash = get_geo_percentage(query, direct, gp_level, )
+            query = pd.merge(query, geo_hash, how='left', on=gp_level)
 
     # for i in range(1, 12):
     #     query[f'{i}_distance_ratio'] = query[f'{i}_distance']/query['raw_dis']
@@ -742,21 +745,25 @@ def get_feature_core():
     #query = pd.merge(query, plan_cat, how='left', on='sid')
 
     #if group is not None and 'profile' in group:
-    profile = get_profile(5)
-    query = pd.merge(query, profile, how='left', on='pid')
+    with timed_bolck('Merge profile'):
+        profile = get_profile(5)
+        query = pd.merge(query, profile, how='left', on='pid')
 
+    with timed_bolck('Merge static feature'):
     #statistics, information
-    stat = get_stati_feature_pid()
-    query = pd.merge(query, stat, how='left', on='pid')
-    query.pid = query.pid.astype(int)
-    logger.info('Finish merge stat feature')
+        stat = get_stati_feature_pid()
+        query = pd.merge(query, stat, how='left', on='pid')
+        query.pid = query.pid.astype(int)
+        logger.info('Finish merge stat feature')
 
-    query = query.fillna(0)
-    logger.info('Finish fillna')
+    with timed_bolck('fillna'):
+        query = query.fillna(0)
+        logger.info('Finish fillna')
 
-    click_mode = query.click_mode
-    del query['click_mode']
-    query['click_mode'] = click_mode
+    with timed_bolck('move click_mode to end'):
+        click_mode = query.click_mode
+        del query['click_mode']
+        query['click_mode'] = click_mode
 
     query.index = query.sid.astype(int)
 
