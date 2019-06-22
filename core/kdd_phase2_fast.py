@@ -1,4 +1,6 @@
-# 推荐场景 
+#!/apps/dslab/anaconda/python3/bin/python
+# -*- coding: utf-8 -*-
+# 推荐场景
 # 	针对 PID / O D / TIME 字段 推荐用户出行模式
 # 		1. 百度内置模型
 # 		2. 基于百度内置模型衍生特征模型
@@ -8,42 +10,30 @@
 # Stacking需要学习的是 不同维度刻画下的，对当前Query(PID,O,D,TIME)的推荐
 # No Graph Embedding Version
 
+import json
+import time
+import warnings
+from collections import Counter
+from math import radians, atan, tan, sin, acos, cos, atan2, sqrt
+
+import geohash
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from pandas import DataFrame as DF
 import scipy.spatial.distance as dist
-import xgboost as xgb
-import lightgbm as lgb
-import catboost as cbt
-import json
-import geohash
-import time
-import gc
-import math
-from tqdm import tqdm
-from math import radians, atan, tan, sin, acos, cos, atan2, sqrt
-from scipy import stats
-import networkx as nx
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+from pandas import DataFrame as DF
 from sklearn.decomposition import TruncatedSVD
-from sklearn.feature_extraction.text import TfidfVectorizer,CountVectorizer
-from sklearn.decomposition import NMF
-from sklearn.decomposition import LatentDirichletAllocation as LDA
-from sklearn.preprocessing import LabelEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder
-from collections import Counter
-import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer, PorterStemmer
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import f1_score,accuracy_score
-from collections import Counter
+from sklearn.preprocessing import LabelEncoder
+from tqdm import tqdm
 
-import warnings
 warnings.filterwarnings('ignore')
 
-%matplotlib inline
+#%matplotlib inline
 
 # GLOBAL Param
 cv = 5               # CV Folds, used in ratio and model train
@@ -126,7 +116,7 @@ def flatten_data(col):
     for i in df.columns[:-1]:
         dis_df = df.loc[:,[i,'sid']].copy()
         dis_df.columns = [col,'sid']
-        dis = pd.concat([dis,dis_df],axis=0,sort=False)
+        dis = pd.concat([dis,dis_df],axis=0  )
     dis = dis.dropna()
 #     dis = dis.sort_values('sid').reset_index(drop = True)
     return dis
@@ -140,7 +130,7 @@ print(train_clicks.shape)
 
 data = train_clicks[['sid','click_mode']].copy()
 test_id = test_queries[['sid']].copy()
-data = pd.concat([data,test_id],axis=0,sort=False).fillna(-1).reset_index(drop = True)
+data = pd.concat([data,test_id],axis=0).fillna(-1).reset_index(drop = True)
 plans = data[['sid']].merge(plans,on='sid',how='left').reset_index(drop = True)
 queries = data[['sid']].merge(queries,on='sid',how='left').reset_index(drop = True)
 
@@ -258,53 +248,54 @@ def get_ktime_feature(k,data,i): # 排名为I时的特征
     tmp = kfc.sort_values(by=['sid',i]).drop_duplicates(subset=['sid'],keep='first')
     return tmp
 
-from scipy import stats
+from scipy import stats, dot, linalg
+
 
 def get_mode(x):  # 众数
     return stats.mode(x)[0][0]
 
 def get_mode_count(x):  # 众数的统计值
     return stats.mode(x)[1][0]
-
-# Graph Embedding 
-def get_graph_embedding(data=None,cols=None,emb_size=128,isWeight=False,model_type=None,weight_col=[],isGraph=False,intGraph=None):
-    
-    for i in tqdm([i for i in cols if i not in weight_col]):
-        data[i] = data[i].astype('str')
-    for i in weight_col:
-        data[i] = data[i].astype('int')
-    if isGraph:
-        G = intGraph
-    else:
-        G = nx.DiGraph()
-        if isWeight:
-            G.add_weighted_edges_from(data[cols].drop_duplicates(subset=cols,keep='first').values)
-        else:
-            G.add_edges_from(data[cols].drop_duplicates(subset=cols,keep='first').values)
-    if model_type == 'Node2Vec':
-        model = Node2Vec(G, walk_length = 10, num_walks = 100,p = 0.25, q = 4, workers = 1)#init model
-        model.train(window_size = 5, iter = 3)# train model
-    elif model_type == 'DeepWalk' :
-        model = DeepWalk(G,walk_length=10,num_walks=80,workers = 1)#init model
-        model.train(window_size=5,iter=3)# train model
-    elif model_type == "SDNE" :
-        model = SDNE(G,hidden_size=[256,128]) #init model
-        model.train(batch_size=3000,epochs=40,verbose=2)# train model
-    elif model_type == "LINE":
-        model = LINE(G,embedding_size=128,order='second') #init model,order can be ['first','second','all']
-        model.train(batch_size=1024,epochs=50,verbose=2)# train model
-    elif model_type == "Struc2Vec" :
-        model = Struc2Vec(G, 10, 100, workers=1, verbose=40, ) #init model
-        model.train(window_size = 5, iter = 3)# train model
-        
-    embeddings = model.get_embeddings()# get embedding vectors
-#     evaluate_embeddings(embeddings)
-    embeddings = pd.DataFrame(embeddings).T
-    new_col = "".join(cols)
-    embeddings.columns = ['{}_{}_emb_{}'.format(new_col,model_type,i) for i in embeddings.columns]
-    embeddings = embeddings.reset_index().rename(columns={'index' : 'node_{}'.format(cols[0])})
-
-    return embeddings
+#
+# # Graph Embedding
+# def get_graph_embedding(data=None,cols=None,emb_size=128,isWeight=False,model_type=None,weight_col=[],isGraph=False,intGraph=None):
+#
+#     for i in tqdm([i for i in cols if i not in weight_col]):
+#         data[i] = data[i].astype('str')
+#     for i in weight_col:
+#         data[i] = data[i].astype('int')
+#     if isGraph:
+#         G = intGraph
+#     else:
+#         G = nx.DiGraph()
+#         if isWeight:
+#             G.add_weighted_edges_from(data[cols].drop_duplicates(subset=cols,keep='first').values)
+#         else:
+#             G.add_edges_from(data[cols].drop_duplicates(subset=cols,keep='first').values)
+#     if model_type == 'Node2Vec':
+#         model = Node2Vec(G, walk_length = 10, num_walks = 100,p = 0.25, q = 4, workers = 1)#init model
+#         model.train(window_size = 5, iter = 3)# train model
+#     elif model_type == 'DeepWalk' :
+#         model = DeepWalk(G,walk_length=10,num_walks=80,workers = 1)#init model
+#         model.train(window_size=5,iter=3)# train model
+#     elif model_type == "SDNE" :
+#         model = SDNE(G,hidden_size=[256,128]) #init model
+#         model.train(batch_size=3000,epochs=40,verbose=2)# train model
+#     elif model_type == "LINE":
+#         model = LINE(G,embedding_size=128,order='second') #init model,order can be ['first','second','all']
+#         model.train(batch_size=1024,epochs=50,verbose=2)# train model
+#     elif model_type == "Struc2Vec" :
+#         model = Struc2Vec(G, 10, 100, workers=1, verbose=40, ) #init model
+#         model.train(window_size = 5, iter = 3)# train model
+#
+#     embeddings = model.get_embeddings()# get embedding vectors
+# #     evaluate_embeddings(embeddings)
+#     embeddings = pd.DataFrame(embeddings).T
+#     new_col = "".join(cols)
+#     embeddings.columns = ['{}_{}_emb_{}'.format(new_col,model_type,i) for i in embeddings.columns]
+#     embeddings = embeddings.reset_index().rename(columns={'index' : 'node_{}'.format(cols[0])})
+#
+#     return embeddings
 
 #####  特征工程部分 #####
 
@@ -370,12 +361,12 @@ def other_distance(word1, word2, param='jaccard'):
     except:
         return np.nan
         
-def ham_distance(word1, word2):
-    try:
-        ham = np.nonzero(matV[0]-matV[1])
-        return np.shape(smstr[0])[1]
-    except:
-        return np.nan
+# def ham_distance(word1, word2):
+#     try:
+#         ham = np.nonzero(matV[0]-matV[1])
+#         return np.shape(smstr[0])[1]
+#     except:
+#         return np.nan
 
 def cos_distance(word1, word2):
     try:
@@ -787,3 +778,7 @@ oof_test[12] = np.nan
 oof_test.set_index('sid',inplace=True)
 
 
+
+
+
+print("End Time {}".format(time.time()-t1))
