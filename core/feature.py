@@ -1,25 +1,15 @@
-import sys
-import os
-import pandas as pd
-import numpy as np
+import json
+import warnings
+from functools import lru_cache
+
+from deprecated import deprecated
+from file_cache.cache import file_cache
+from file_cache.utils.reduce_mem import *
+from file_cache.utils.util_pandas import *
 from sklearn.decomposition import TruncatedSVD
 
 from core.config import *
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-import seaborn as sns
 
-from file_cache.utils.util_pandas import *
-from file_cache.cache import file_cache
-from file_cache.utils.reduce_mem import *
-from functools import lru_cache
-
-from glob import glob
-import json
-from math import radians, atan, tan, sin, acos, cos
-from deprecated import deprecated
-
-import warnings
 warnings.filterwarnings("ignore")
 
 # #from core.submit import *
@@ -44,9 +34,6 @@ warnings.filterwarnings("ignore")
 
 
 # Variable
-
-
-from  pandas import Series
 
 
 
@@ -232,12 +219,7 @@ def get_plan_nlp():
 
     N_COM = 10
 
-    from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-    from sklearn.pipeline import Pipeline
-    import nltk
-    from nltk.tokenize import sent_tokenize, word_tokenize
-    from nltk.corpus import stopwords
-    from nltk.stem import WordNetLemmatizer, PorterStemmer
+    from sklearn.feature_extraction.text import TfidfVectorizer
 
     # def tokenize(data):
     #     tokenized_docs = [word_tokenize(doc) for doc in data]
@@ -370,7 +352,6 @@ def get_plan_original_wide():
         base_list.append(base)
     base = pd.concat(base_list)
     from multiprocessing import Pool as ThreadPool  # 进程
-    from functools import partial
 
     #Initial
     get_plan_original_deep()
@@ -565,7 +546,6 @@ def get_profile_lda(n_topics):
         res = profile.apply(lambda row: ' '.join(row), axis=1)
         return res
 
-    from sklearn.feature_extraction.text import TfidfTransformer
     from sklearn.feature_extraction.text import CountVectorizer
     from sklearn.decomposition import LatentDirichletAllocation
 
