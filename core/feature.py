@@ -1165,12 +1165,13 @@ def get_bin_gp():
     return res
 
 
-@timed()
+
 @file_cache()
 def get_o_d_pid():
     query = get_query()
-    tmp = query.groupby(['o', 'd'])['pid'].transform(lambda x: np.mean(x.value_counts()))
-    tmp.index = query.sid
+    with timed_bolck('o_d_pid'):
+        tmp = query.groupby(['o', 'd'])['pid'].transform(lambda x: np.mean(x.value_counts()))
+        tmp.index = query.sid
     return tmp
 
 
