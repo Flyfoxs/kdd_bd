@@ -331,8 +331,8 @@ def get_plan_original_deep():
                     single_plan['phase'] = phase
                     plan_list.append(single_plan)
                 # else:
-                #     logger.info(f'Already have mode:{cur_mode} for sid:{row.sid}')
-    res = pd.DataFrame(plan_list)
+                #     logger.info(f'Already have moede:{cur_mode} for sid:{row.sid}')
+    res = pd.DataFrame(plan_list).astype(int)
 
     logger.debug(f'Try to fillna for plan info:{len(res)}')
     res[plan_items] = res.loc[:,plan_items].fillna('0').replace({'':'0'}).astype(int)

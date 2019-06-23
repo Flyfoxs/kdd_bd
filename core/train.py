@@ -147,15 +147,15 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
         learning_rate=0.05, random_state=2019 + index, n_jobs=40, metric="None", importance_type='gain'
         """
             params = {
-                'nthread': -1,
-                'verbose':-1,
-                'num_leaves': 128,
-                'min_data_in_leaf': 90,
-                'feature_fraction':0.5,
-                'lambda_l1': 0.1,
-                'lambda_l2': 10,
-                 'max_depth': 6,
-
+                # 'nthread': -1,
+                # 'verbose':-1,
+                # 'num_leaves': 128,
+                # 'min_data_in_leaf': 90,
+                # 'feature_fraction':0.5,
+                # 'lambda_l1': 0.1,
+                # 'lambda_l2': 10,
+                #  'max_depth': 6,
+                #
                 # 'learning_rate': 0.1,
                 # 'bagging_fraction': 0.7,
 
@@ -173,7 +173,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
             num_round = 30000
             #num_round = 10
             verbose_eval = 50
-            #clf = None
+            clf = None
             with timed_bolck(f'Train#{fold_}'):
                 clf = lgb.train(params,
                                 trn_data,
@@ -428,7 +428,7 @@ nohup python -u  core/train.py train_ex > base_18_none_5.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_stand_7.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_minmax_6.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > del5.log 2>&1 &
+nohup python -u  core/train.py train_ex > base_24.log 2>&1 &
 
 
 nohup python -u  core/train.py train_ex > base_20_all_sz.log 2>&1 &
