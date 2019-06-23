@@ -108,7 +108,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
     num_class = 12
 
     oof = np.zeros((len(train_data), num_class))
-    predictions = np.zeros((len(orig_X_test.loc[orig_X_test.city==2]), num_class))
+    predictions = np.zeros((len(orig_X_test), num_class))
     # start = time.time()
     feature_importance_df = pd.DataFrame()
 
@@ -126,10 +126,12 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
 
     feature_cnt = ()
 
-    orig_X_test=orig_X_test.loc[orig_X_test.city==2]
+    # orig_X_test=orig_X_test.loc[orig_X_test.city==2]
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
+        import gc
+        gc.collect()
         with timed_bolck(f'Fold#{fold_}'):
-            val_idx = filter_index(val_idx)
+            # val_idx = filter_index(val_idx)
             #print(train_data.shape,trn_idx.shape, val_idx.shape , X_test.shape,trn_idx.max(), val_idx.max() )
             train_x, train_y, val_x, val_y, X_test = extend_split_feature(train_data, trn_idx, val_idx, orig_X_test, drop_list)
             feature_cnt = train_data.shape[0], train_x.shape[1]
@@ -138,18 +140,24 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
             val_data = lgb.Dataset(val_x, val_y , categorical_feature=cate_cols, reference=trn_data)
 
             # np.random.seed(666)
+            """
+            boosting_type="gbdt", num_leaves=128, reg_alpha=0.1, reg_lambda=10,
+        max_depth=-1, n_estimators=3000, objective='multiclass',num_classes=12,
+        subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
+        learning_rate=0.05, random_state=2019 + index, n_jobs=40, metric="None", importance_type='gain'
+        """
             params = {
                 'nthread': -1,
                 'verbose':-1,
-                'num_leaves': 80,
+                'num_leaves': 128,
                 'min_data_in_leaf': 90,
-                'feature_fraction':0.65,
-                'lambda_l1': 20,
-                'lambda_l2': 5,
-                'max_depth': 6,
+                'feature_fraction':0.5,
+                'lambda_l1': 0.1,
+                'lambda_l2': 10,
+                 'max_depth': 6,
 
-                'learning_rate': 0.1,
-                'bagging_fraction': 0.7,
+                # 'learning_rate': 0.1,
+                # 'bagging_fraction': 0.7,
 
                 'objective': 'multiclass',
                 'metric': 'None',
@@ -165,13 +173,15 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
             num_round = 30000
             #num_round = 10
             verbose_eval = 50
-            clf = lgb.train(params,
-                            trn_data,
-                            num_round,
-                            valid_sets=[trn_data, val_data],
-                            feval=lgb_f1_score,
-                            verbose_eval=verbose_eval,
-                            early_stopping_rounds=400)
+            #clf = None
+            with timed_bolck(f'Train#{fold_}'):
+                clf = lgb.train(params,
+                                trn_data,
+                                num_round,
+                                valid_sets=[trn_data, val_data],
+                                feval=lgb_f1_score,
+                                verbose_eval=verbose_eval,
+                                early_stopping_rounds=400)
 
             max_iteration = max(max_iteration, clf.best_iteration)
             min_iteration = min(min_iteration, clf.best_iteration)
@@ -418,7 +428,7 @@ nohup python -u  core/train.py train_ex > base_18_none_5.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_stand_7.log 2>&1 &
 nohup python -u  core/train.py train_ex > base_18_minmax_6.log 2>&1 &
 
-nohup python -u  core/train.py train_ex > base_20_city.log 2>&1 &
+nohup python -u  core/train.py train_ex > del5.log 2>&1 &
 
 
 nohup python -u  core/train.py train_ex > base_20_all_sz.log 2>&1 &

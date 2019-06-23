@@ -5,10 +5,10 @@ from functools import lru_cache
 
 
 from deprecated import deprecated
+from file_cache.utils.util_log import timed_bolck
 from file_cache.cache import file_cache
 from file_cache.utils.reduce_mem import *
 from file_cache.utils.util_pandas import *
-from file_cache.utils.util_log import timed_bolck
 from sklearn.decomposition import TruncatedSVD
 
 from core.config import *
@@ -718,6 +718,7 @@ def get_feature_core():
     plans = get_plans()
     del plans['phase']
 
+
     #plan_cat = get_plan_cat()
     #plans.columns = ['_'.join(item) if isinstance(item, tuple) else item for item in plans.columns]
 
@@ -803,10 +804,14 @@ def get_direction():
 
 @timed()
 # @lru_cache()
-##@file_cache()
+@file_cache()
+@reduce_mem()
 def get_feature():
 
     query = get_feature_core()
+
+    if 'plans' in query:
+        del query['plans']
 
     #query['city'] = get_city_fea()
 
