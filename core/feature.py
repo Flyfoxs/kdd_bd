@@ -311,6 +311,7 @@ def get_plan_cat():
 
     return plan_original.iloc[:,last_col:].reset_index()
 
+@timed()
 @file_cache()
 def get_plan_original_deep():
     plan_list = []

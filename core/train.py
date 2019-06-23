@@ -128,91 +128,86 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
 
     orig_X_test=orig_X_test.loc[orig_X_test.city==2]
     for fold_, (trn_idx, val_idx) in enumerate(tqdm(split_fold, 'Kfold')):
-        logger.debug(f'======{fold_}')
+        with timed_bolck(f'Fold#{fold_}'):
+            val_idx = filter_index(val_idx)
+            #print(train_data.shape,trn_idx.shape, val_idx.shape , X_test.shape,trn_idx.max(), val_idx.max() )
+            train_x, train_y, val_x, val_y, X_test = extend_split_feature(train_data, trn_idx, val_idx, orig_X_test, drop_list)
+            feature_cnt = train_data.shape[0], train_x.shape[1]
+            logger.info(f"fold n°{fold_} BEGIN, cv:{cv},all_train:{feature_cnt}, train:{train_x.shape}, val:{val_x.shape}, test:{X_test.shape}, cat:{cate_cols} " )
+            trn_data = lgb.Dataset(train_x, train_y, categorical_feature=cate_cols)
+            val_data = lgb.Dataset(val_x, val_y , categorical_feature=cate_cols, reference=trn_data)
 
-        #trn_idx =filter_index(trn_idx)
-        val_idx = filter_index(val_idx)
+            # np.random.seed(666)
+            params = {
+                'nthread': -1,
+                'verbose':-1,
+                'num_leaves': 80,
+                'min_data_in_leaf': 90,
+                'feature_fraction':0.65,
+                'lambda_l1': 20,
+                'lambda_l2': 5,
+                'max_depth': 6,
 
+                'learning_rate': 0.1,
+                'bagging_fraction': 0.7,
 
+                'objective': 'multiclass',
+                'metric': 'None',
+                'num_class': num_class,
+                #'random_state': 2019,
+                # 'device':'gpu',
+                # 'gpu_platform_id': 1, 'gpu_device_id': 0
+            }
+            params = dict(params, **args)
 
-        #print(train_data.shape,trn_idx.shape, val_idx.shape , X_test.shape,trn_idx.max(), val_idx.max() )
-        train_x, train_y, val_x, val_y, X_test = extend_split_feature(train_data, trn_idx, val_idx, orig_X_test, drop_list)
-        feature_cnt = train_data.shape[0], train_x.shape[1]
-        logger.info(f"fold n°{fold_} BEGIN, cv:{cv},all_train:{feature_cnt}, train:{train_x.shape}, val:{val_x.shape}, test:{X_test.shape}, cat:{cate_cols} " )
-        trn_data = lgb.Dataset(train_x, train_y, categorical_feature=cate_cols)
-        val_data = lgb.Dataset(val_x, val_y , categorical_feature=cate_cols, reference=trn_data)
+            logger.info(params)
 
-        # np.random.seed(666)
-        params = {
-            'nthread': -1,
-            'verbose':-1,
-            'num_leaves': 80,
-            'min_data_in_leaf': 90,
-            'feature_fraction':0.65,
-            'lambda_l1': 20,
-            'lambda_l2': 5,
-            'max_depth': 6,
-
-            'learning_rate': 0.1,
-            'bagging_fraction': 0.7,
-
-            'objective': 'multiclass',
-            'metric': 'None',
-            'num_class': num_class,
-            #'random_state': 2019,
-            # 'device':'gpu',
-            # 'gpu_platform_id': 1, 'gpu_device_id': 0
-        }
-        params = dict(params, **args)
-
-        logger.info(params)
-
-        num_round = 30000
-        #num_round = 10
-        verbose_eval = 50
-        clf = lgb.train(params,
-                        trn_data,
-                        num_round,
-                        valid_sets=[trn_data, val_data],
-                        feval=lgb_f1_score,
-                        verbose_eval=verbose_eval,
-                        early_stopping_rounds=400)
-
-        max_iteration = max(max_iteration, clf.best_iteration)
-        min_iteration = min(min_iteration, clf.best_iteration)
-
-        oof[val_idx] = clf.predict(val_x, num_iteration=clf.best_iteration)
-
-        dic_ = val_y.value_counts(normalize=True)
-        get_weighted_fscore(val_y.values, oof[val_idx].argmax(axis=1), dic_)
-        score = f1_score(val_y.values, oof[val_idx].argmax(axis=1), average='weighted')
-
-        logger.info(f'fold n{fold_} END, cv:{cv}, local_score:{score:6.4f},best_iter:{clf.best_iteration}, val shape:{val_x.shape}')
-
-        fold_importance_df = pd.DataFrame()
-        fold_importance_df["feature"] = X_test.columns
-        fold_importance_df["importance"] = clf.feature_importance()
-        fold_importance_df["fold"] = fold_ + 1
-        feature_importance_df = pd.concat([feature_importance_df, fold_importance_df], axis=0)
-        if cv:
-            predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
-        elif len(args)==0: #not Search model
-
-            all_data, y_data, _, _ , X_test = extend_split_feature(train_data, range(len(train_data)),[], orig_X_test, drop_list)
-            all_train = lgb.Dataset(all_data, y_data, categorical_feature=cate_cols)
-            logger.info(f'CV is disable, train with full train data with iter:{clf.best_iteration}')
+            num_round = 30000
+            #num_round = 10
+            verbose_eval = 50
             clf = lgb.train(params,
-                            all_train,
-                            # num_round,
-                            num_boost_round=clf.best_iteration,
-                            valid_sets=[all_train],
+                            trn_data,
+                            num_round,
+                            valid_sets=[trn_data, val_data],
                             feval=lgb_f1_score,
-                            verbose_eval=verbose_eval * 2,
-                            )
-            predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
-            break
-        else:
-            break
+                            verbose_eval=verbose_eval,
+                            early_stopping_rounds=400)
+
+            max_iteration = max(max_iteration, clf.best_iteration)
+            min_iteration = min(min_iteration, clf.best_iteration)
+
+            oof[val_idx] = clf.predict(val_x, num_iteration=clf.best_iteration)
+
+            dic_ = val_y.value_counts(normalize=True)
+            get_weighted_fscore(val_y.values, oof[val_idx].argmax(axis=1), dic_)
+            score = f1_score(val_y.values, oof[val_idx].argmax(axis=1), average='weighted')
+
+            logger.info(f'fold n{fold_} END, cv:{cv}, local_score:{score:6.4f},best_iter:{clf.best_iteration}, val shape:{val_x.shape}')
+
+            fold_importance_df = pd.DataFrame()
+            fold_importance_df["feature"] = X_test.columns
+            fold_importance_df["importance"] = clf.feature_importance()
+            fold_importance_df["fold"] = fold_ + 1
+            feature_importance_df = pd.concat([feature_importance_df, fold_importance_df], axis=0)
+            if cv:
+                predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
+            elif len(args)==0: #not Search model
+
+                all_data, y_data, _, _ , X_test = extend_split_feature(train_data, range(len(train_data)),[], orig_X_test, drop_list)
+                all_train = lgb.Dataset(all_data, y_data, categorical_feature=cate_cols)
+                logger.info(f'CV is disable, train with full train data with iter:{clf.best_iteration}')
+                clf = lgb.train(params,
+                                all_train,
+                                # num_round,
+                                num_boost_round=clf.best_iteration,
+                                valid_sets=[all_train],
+                                feval=lgb_f1_score,
+                                verbose_eval=verbose_eval * 2,
+                                )
+                predictions += clf.predict(X_test, num_iteration=clf.best_iteration)
+                break
+            else:
+                break
     predictions = predictions / (fold_ + 1)
     if cv:
         score = f1_score(train_data.click_mode.values, oof.argmax(axis=1), average='weighted')

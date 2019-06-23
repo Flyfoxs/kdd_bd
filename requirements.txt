@@ -6,3 +6,7 @@ lightgbm
 hyperopt
 xgboost
 fire
+matplotlib
+deprecated
+tables
+# yum install gcc-c++
