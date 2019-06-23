@@ -101,7 +101,7 @@ def get_plan_mini(model):
     return mini_plan.add_prefix(f'{model:02}_')
 
 @timed()
-@lru_cache()
+# @lru_cache()
 def get_original(file):
     df =  pd.read_csv(f'{input_folder}/{file}', dtype=type_dict)
     return df
@@ -289,6 +289,8 @@ def get_plans():
 
     plan['sid'] = plan.index
 
+    plan.index.name = 'index'
+
     return plan
 
 
@@ -375,7 +377,7 @@ def get_plan_original_wide():
     return plan_part.set_index('sid')
 
 @timed()
-@lru_cache()
+# @lru_cache()
 @file_cache()
 def get_query():
     import geohash as geo
@@ -519,7 +521,7 @@ def get_geo_percentage(query, direct, gp_level=[], prefix='glb_'):
     return res
 
 
-@lru_cache()
+# @lru_cache()
 def get_click():
     click_1 =  get_original('train_clicks_phase1.csv')
     click_2 =  get_original('train_clicks_phase2.csv')
@@ -704,7 +706,7 @@ def get_train_test():
     return train_data, X_test
 
 @timed()
-@lru_cache()
+# @lru_cache()
 @file_cache()
 @reduce_mem()
 def get_feature_core():
@@ -770,7 +772,7 @@ def get_feature_core():
 
     return query
 
-@lru_cache()
+# @lru_cache()
 def get_city_fea():
     core = get_query()
     return core.apply(lambda val: get_city(val.o0, val.o1), axis=1)
@@ -799,7 +801,7 @@ def get_direction():
     return query.apply(lambda row: bearing_array(row.o0,row.o1, row.d0,row.d1,), axis=1)
 
 @timed()
-@lru_cache()
+# @lru_cache()
 ##@file_cache()
 def get_feature():
 
@@ -908,7 +910,7 @@ def get_convert_recommend(feature, gp_col = ['o_seq_0']):
     new_fea =  new_fea.add_prefix('rec_conv_'+'_'.join(gp_col)+'_')
     return new_fea.reset_index()
 
-@lru_cache()
+# @lru_cache()
 def get_resample_sid():
     st = pd.read_hdf('./output/stacking/L_500000_334_0.67787_0845_1443.h5', 'train')
     st['predict'] = st.iloc[:, :12].idxmax(axis=1)
@@ -984,7 +986,7 @@ def extend_split_feature(df, trn_idx, val_idx ,  X_test, drop_list):
 
 
 
-@lru_cache()
+# @lru_cache()
 def get_drop_list_std(thres_hold=0):
     feature = get_feature()
     tmp = feature.describe().T
