@@ -25,6 +25,7 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from tqdm import tqdm
 from file_cache.utils.util_log import timed, timed_bolck, logger
 from file_cache.cache import file_cache
+from functools import lru_cache
 warnings.filterwarnings('ignore')
 
 def jsonLoads(strs, key):
@@ -500,6 +501,7 @@ def get_profiles():
     return profiles
 
 @timed()
+@lru_cache()
 @file_cache()
 def get_plans():
 

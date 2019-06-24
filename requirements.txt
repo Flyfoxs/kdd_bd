@@ -9,4 +9,7 @@ fire
 matplotlib
 deprecated
 tables
+nltk
 # yum install gcc-c++
+
+# pip install git+https://github.com/shenweichen/GraphEmbedding.git@master
