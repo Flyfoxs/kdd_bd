@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import scipy.spatial.distance as dist
-from ge import DeepWalk, Struc2Vec, SDNE, LINE, Node2Vec
+
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 from pandas import DataFrame as DF
@@ -23,9 +23,9 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from tqdm import tqdm
-from file_cache.utils.util_log import timed, timed_bolck
+from file_cache.utils.util_log import timed, timed_bolck, logger
+from file_cache.cache import file_cache
 warnings.filterwarnings('ignore')
-
 
 def jsonLoads(strs, key):
     '''strs：传进来的json数据
@@ -155,8 +155,10 @@ def get_mode_count(x):  # 众数的统计值
 
 
 # Graph Embedding
+@timed()
 def get_graph_embedding(data=None, cols=None, embed_size=128, isWeight=False, model_type=None, weight_col=[],
                         isGraph=False, intGraph=None):
+    from ge import DeepWalk, Struc2Vec, SDNE, LINE, Node2Vec
     for i in tqdm([i for i in cols if i not in weight_col]):
         data[i] = data[i].astype('str')
     for i in weight_col:
@@ -419,11 +421,6 @@ def calc_distance(word1, word2, param='jaccard'):
         return np.nan
 
 
-def get_padding(x, delta=0):
-    if delta != 0:
-        return list((x + delta)) + ([0] * (padding_maxlen - len(x)))
-    else:
-        return list((x)) + ([0] * (padding_maxlen - len(x)))
 
 
 # GLOBAL Param
@@ -438,23 +435,23 @@ if for_test:
 else:
     nrows = 1000
 
-input_dir = '../input/data_set_phase{}/'.format(version)
+input_dir = './input/data_set_phase{}/'.format(version)
 
 t1 = time.time()
-print("Now Input Data...")
+print("Now Input Data.....")
 
-if version == 2:
-    profiles = pd.read_csv(input_dir+'profiles.csv',nrows=nrows)
-    train_clicks_2 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version),parse_dates=['click_time'],nrows=nrows)
-    train_clicks_1 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version-1),parse_dates=['click_time'],nrows=nrows)
-    train_clicks = train_clicks_2.append(train_clicks_1).reset_index(drop=True)
-    train_plans_2 = pd.read_csv(input_dir+'train_plans_phase{}.csv'.format(version),parse_dates=['plan_time'],nrows=nrows)
-    train_plans_1 = pd.read_csv(input_dir+'train_plans_phase{}.csv'.format(version-1),parse_dates=['plan_time'],nrows=nrows)
-    train_plans = train_plans_2.append(train_plans_1).reset_index(drop=True)
-
-    test_plans = pd.read_csv(input_dir+'test_plans.csv',parse_dates=['plan_time'],nrows=nrows)
-
-    print("Use Time {}".format(time.time()-t1))
+# if version == 2:
+#     profiles = pd.read_csv(input_dir+'profiles.csv',nrows=nrows)
+#     train_clicks_2 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version),parse_dates=['click_time'],nrows=nrows)
+#     train_clicks_1 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version-1),parse_dates=['click_time'],nrows=nrows)
+#     train_clicks = train_clicks_2.append(train_clicks_1).reset_index(drop=True)
+#     train_plans_2 = pd.read_csv(input_dir+'train_plans_phase{}.csv'.format(version),parse_dates=['plan_time'],nrows=nrows)
+#     train_plans_1 = pd.read_csv(input_dir+'train_plans_phase{}.csv'.format(version-1),parse_dates=['plan_time'],nrows=nrows)
+#     train_plans = train_plans_2.append(train_plans_1).reset_index(drop=True)
+#
+#     test_plans = pd.read_csv(input_dir+'test_plans.csv',parse_dates=['plan_time'],nrows=nrows)
+#
+#     print("Use Time {}".format(time.time()-t1))
 # else:
 #     profiles = pd.read_csv(input_dir+'profiles.csv',nrows=nrows)
 #     train_clicks = pd.read_csv(input_dir+'train_clicks.csv',parse_dates=['click_time'],nrows=nrows)
@@ -474,6 +471,7 @@ if version == 2:
 #     del tmp;
 
 @timed()
+@file_cache()
 def get_queries():
     train_queries_2 = pd.read_csv(input_dir+'train_queries_phase{}.csv'.format(version),parse_dates=['req_time'],nrows=nrows)
     train_queries_1 = pd.read_csv(input_dir+'train_queries_phase{}.csv'.format(version-1),parse_dates=['req_time'],nrows=nrows)
@@ -484,7 +482,7 @@ def get_queries():
     train_queries['type_'] = 'train'
     test_queries['type_'] = 'test'
 
-    queries = pd.concat([train_queries, test_queries], axis=0).reset_index(drop=True)
+    queries = pd.concat([train_queries.sample(frac=0.01), test_queries.sample(frac=0.01)], axis=0).reset_index(drop=True)
     return queries
 
 @timed()
@@ -496,10 +494,20 @@ def get_train_clicks():
     train_clicks = train_clicks_2.append(train_clicks_1).reset_index(drop=True)
     return train_clicks
 
+def get_profiles():
+    profiles = pd.read_csv(input_dir + 'profiles.csv')
+    return profiles
+
 @timed()
+@file_cache()
 def get_plans():
 
     print("Deal With Plans...")
+
+    train_plans_2 = pd.read_csv(input_dir+'train_plans_phase{}.csv'.format(version),parse_dates=['plan_time'],nrows=nrows)
+    train_plans_1 = pd.read_csv(input_dir+'train_plans_phase{}.csv'.format(version-1),parse_dates=['plan_time'],nrows=nrows)
+    train_plans = train_plans_2.append(train_plans_1).reset_index(drop=True)
+    test_plans = pd.read_csv(input_dir + 'test_plans.csv', parse_dates=['plan_time'], nrows=nrows)
 
     plans = pd.concat([train_plans,test_plans],axis=0).reset_index(drop = True)
 
@@ -527,6 +535,25 @@ def get_plans():
     plans['price_str'] = plans['price'].astype('str')
     plans['distance_str'] = plans['distance'].astype('str')
     plans['eta_str'] = plans['eta'].astype('str')
+
+    def get_padding(x, delta=0):
+        padding_maxlen = 8 # padding_maxlen = np.max(plans_feature['transport_mode_len'])
+        if delta != 0:
+            return list((x + delta)) + ([0] * (padding_maxlen - len(x)))
+        else:
+            return list((x)) + ([0] * (padding_maxlen - len(x)))
+
+    plans['distance_rank_array'] = plans['distance_rank'].map(lambda x: get_padding(x, 1))
+    plans['eta_rank_array'] = plans['eta_rank'].map(lambda x: get_padding(x, 1))
+    plans['price_rank_array'] = plans['price_rank'].map(lambda x: get_padding(x, 1))
+    plans['mode_rank_array'] = plans['transport_mode_rank'].map(lambda x: get_padding(x, 1))
+
+    plans['distance_array'] = plans['distance'].map(lambda x: get_padding(x, 0))
+    plans['eta_array'] = plans['eta'].map(lambda x: get_padding(x, 0))
+    plans['price_array'] = plans['price'].map(lambda x: get_padding(x, 0))
+    plans['transport_mode_array'] = plans['transport_mode'].map(lambda x: get_padding(x, 0))
+
+
     plans = plans.sort_values(by=['sid'])
     return plans
 
@@ -570,480 +597,545 @@ def get_plans_data():
     print("Plans Prepare Finished...")
     return data
 
-# OD
-queries = get_queries()
-plans = get_plans()
-data  = get_plans_data()
+# # OD
+# queries = get_queries()
+# plans = get_plans()
+# data  = get_plans_data()
+# profiles = get_profiles()
 
 #####  特征工程部分 #####
 
-feature = plans[['sid']].sort_values(by=['sid']).copy()
+#Plan展开初级特征
+@timed()
+@file_cache()
+def get_feature_plan_wide():
+    data = get_plans_data()
+    plans = get_plans()
+    feature = plans[['sid']].sort_values(by=['sid']).copy()
 
-# 处理百度的推荐模型
+    # 处理百度的推荐模型
 
-# 按顺序展开
-mixed_col = ['ep','pe','ed','de','dp','pd']
-for i in tqdm(range(0,4)):
-    now = ['sid','distance','eta','price'] + mixed_col + ['transport_mode']
-    tmp = data[data['transport_mode_rank']==i]
-    tmp = tmp[now].set_index('sid').add_prefix("Recommand_{}_".format(i)).reset_index()
-    feature = feature.merge(tmp,on='sid',how='left')
-
-# 在对应取得最小值/次小值时的对应推荐
-for i in tqdm(['distance','eta','price']+mixed_col):
-    for j in range(1,3):
-        tmp = get_ktime_feature(j,data,i)
+    # 按顺序展开
+    mixed_col = ['ep','pe','ed','de','dp','pd']
+    for i in tqdm(range(0,4)):
         now = ['sid','distance','eta','price'] + mixed_col + ['transport_mode']
-        now = [j for j in now if i not in j]
-        tmp = tmp[now].set_index('sid').add_prefix("{}_inMin_{}_".format(i,j-1)).reset_index()
+        tmp = data[data['transport_mode_rank']==i]
+        tmp = tmp[now].set_index('sid').add_prefix("Recommand_{}_".format(i)).reset_index()
         feature = feature.merge(tmp,on='sid',how='left')
-        if i in mixed_col:
-            break
 
-plans_feature = plans[['sid']]
-plans_feature['mode_array_count_sid'] = plans.groupby(['transport_mode_str'])['sid'].transform('count')
-plans_feature['price_count_sid'] = plans.groupby(['price_str'])['sid'].transform('count')
-plans_feature['eta_count_sid'] = plans.groupby(['eta_str'])['sid'].transform('count')
-plans_feature['distance_count_sid'] = plans.groupby(['distance_str'])['sid'].transform('count')
-plans_feature['mode_price_count'] = plans.groupby(['transport_mode_str','price_str'])['sid'].transform('count')
-plans_feature['mode_eta_count'] = plans.groupby(['transport_mode_str','eta_str'])['sid'].transform('count')
-plans_feature['mode_distance_count'] = plans.groupby(['transport_mode_str','distance_str'])['sid'].transform('count')
+    # 在对应取得最小值/次小值时的对应推荐
+    for i in tqdm(['distance','eta','price']+mixed_col):
+        for j in range(1,3):
+            tmp = get_ktime_feature(j,data,i)
+            now = ['sid','distance','eta','price'] + mixed_col + ['transport_mode']
+            now = [j for j in now if i not in j]
+            tmp = tmp[now].set_index('sid').add_prefix("{}_inMin_{}_".format(i,j-1)).reset_index()
+            feature = feature.merge(tmp,on='sid',how='left')
+            if i in mixed_col:
+                break
+    return feature
 
-plans_feature['transport_mode_len'] = plans['transport_mode'].map(lambda x:len(x))
-plans_feature['transport_mode_nunique'] = plans['transport_mode'].map(lambda x:len(set((x))))
-plans_feature['price_nonan_mean'] = plans['price'].map(lambda x:np.mean(get_stat(x)))
-# plans_feature['price_nonan_skew'] = plans['price'].map(lambda x:stats.skew(get_stat(x)))
-# plans_feature['price_nonan_kurt'] = plans['price'].map(lambda x:stats.kurtosis(get_stat(x)))
-plans_feature['price_nonan_std'] = plans['price'].map(lambda x:np.std(get_stat(x)))
-plans_feature['price_nonan_max'] = plans['price'].map(lambda x:np.max(get_stat(x)))
-plans_feature['price_nonan_min'] = plans['price'].map(lambda x:np.min(get_stat(x)))
-plans_feature['price_nonan_sum'] = plans['price'].map(lambda x:np.sum(get_stat(x)))
+@timed()
+@file_cache()
+def get_feature_from_plans():
+    plans = get_plans()
+    plans_feature = plans[['sid']]
+    plans_feature['mode_array_count_sid'] = plans.groupby(['transport_mode_str'])['sid'].transform('count')
+    plans_feature['price_count_sid'] = plans.groupby(['price_str'])['sid'].transform('count')
+    plans_feature['eta_count_sid'] = plans.groupby(['eta_str'])['sid'].transform('count')
+    plans_feature['distance_count_sid'] = plans.groupby(['distance_str'])['sid'].transform('count')
+    plans_feature['mode_price_count'] = plans.groupby(['transport_mode_str','price_str'])['sid'].transform('count')
+    plans_feature['mode_eta_count'] = plans.groupby(['transport_mode_str','eta_str'])['sid'].transform('count')
+    plans_feature['mode_distance_count'] = plans.groupby(['transport_mode_str','distance_str'])['sid'].transform('count')
 
-padding_maxlen = np.max(plans_feature['transport_mode_len'])
+    plans_feature['transport_mode_len'] = plans['transport_mode'].map(lambda x:len(x))
+    plans_feature['transport_mode_nunique'] = plans['transport_mode'].map(lambda x:len(set((x))))
+    plans_feature['price_nonan_mean'] = plans['price'].map(lambda x:np.mean(get_stat(x)))
+    # plans_feature['price_nonan_skew'] = plans['price'].map(lambda x:stats.skew(get_stat(x)))
+    # plans_feature['price_nonan_kurt'] = plans['price'].map(lambda x:stats.kurtosis(get_stat(x)))
+    plans_feature['price_nonan_std'] = plans['price'].map(lambda x:np.std(get_stat(x)))
+    plans_feature['price_nonan_max'] = plans['price'].map(lambda x:np.max(get_stat(x)))
+    plans_feature['price_nonan_min'] = plans['price'].map(lambda x:np.min(get_stat(x)))
+    plans_feature['price_nonan_sum'] = plans['price'].map(lambda x:np.sum(get_stat(x)))
 
-plans_feature['price_have_0_num'] = plans['price'].map(lambda x:len([i for i in x if i==0]))
-plans_feature['price_have_0_ratio'] = plans_feature['price_have_0_num'] / plans_feature['transport_mode_len']
-plans_feature['price_mean'] = plans['price'].map(lambda x:np.mean(x))
-plans_feature['distance_mean'] = plans['distance'].map(lambda x:np.mean(x))
-plans_feature['eta_mean'] = plans['eta'].map(lambda x:np.mean(x))
+    padding_maxlen = np.max(plans_feature['transport_mode_len'])
 
-plans_feature['distance_min'] = plans['distance'].map(lambda x:np.min(x))
-plans_feature['distance_max'] = plans['distance'].map(lambda x:np.max(x))
-plans_feature['distance_std'] = plans['distance'].map(lambda x:np.std(x))
-plans_feature['distance_sum'] = plans['distance'].map(lambda x:np.sum(x))
-# plans_feature['distance_skew'] = plans['distance'].map(lambda x:stats.skew(x))
-# plans_feature['distance_kurt'] = plans['distance'].map(lambda x:stats.kurtosis(x))
-
-plans_feature['eta_min'] = plans['eta'].map(lambda x:np.min(x))
-plans_feature['eta_max'] = plans['eta'].map(lambda x:np.max(x))
-plans_feature['eta_std'] = plans['eta'].map(lambda x:np.std(x))
-plans_feature['eta_sum'] = plans['eta'].map(lambda x:np.sum(x))
-# plans_feature['eta_skew'] = plans['eta'].map(lambda x:stats.skew(x))
-# plans_feature['eta_kurt'] = plans['eta'].map(lambda x:stats.kurtosis(x))
-
-plans_feature['transport_mode_mode'] = plans['transport_mode'].map(lambda x:stats.mode(x))
-plans_feature['transport_mode_mode_count'] = plans_feature['transport_mode_mode'].map(lambda x:x[1][0])
-plans_feature['transport_mode_mode'] = plans_feature['transport_mode_mode'].map(lambda x:x[0][0])
-plans_feature['transport_mode_transform_count'] = plans_feature.groupby(['transport_mode_mode','transport_mode_mode_count'])['sid'].transform('count')
+    print('padding_maxlen=', padding_maxlen)
 
 
-plans['distance_rank_array'] = plans['distance_rank'].map(lambda x:get_padding(x,1))
-plans['eta_rank_array'] = plans['eta_rank'].map(lambda x:get_padding(x,1))
-plans['price_rank_array'] = plans['price_rank'].map(lambda x:get_padding(x,1))
-plans['mode_rank_array'] = plans['transport_mode_rank'].map(lambda x:get_padding(x,1))
-    
-plans['distance_array'] = plans['distance'].map(lambda x:get_padding(x,0))
-plans['eta_array'] = plans['eta'].map(lambda x:get_padding(x,0))
-plans['price_array'] = plans['price'].map(lambda x:get_padding(x,0))
-plans['transport_mode_array'] = plans['transport_mode'].map(lambda x:get_padding(x,0))
 
-print(plans.shape,plans.columns)
-for now in ['distance','price','eta']:
-    emb1,emb2,emb3,emb4,emb5,emb6,emb7,emb8 = [],[],[],[],[],[],[],[]
-    for i in tqdm(plans[['{}_array'.format(now),'{}_rank_array'.format(now),'mode_rank_array','transport_mode_array']].values):
-        power1,power2 = [],[]
-        for j in range(len(i[1])):
-            power1.append(i[1][j]*3**(padding_maxlen-j-1))
-            power2.append(i[2][j]*3**(padding_maxlen-j-1))
-        emb1.append(np.dot(i[0],i[1]))
-        emb2.append(np.dot(i[0],i[2]))
-        emb3.append(np.dot(i[3],i[1]))
-        emb4.append(np.dot(i[3],i[2]))
-        emb5.append(np.dot(i[0],power1))
-        emb6.append(np.dot(i[0],power2))
-        emb7.append(np.dot(i[3],power1))
-        emb8.append(np.dot(i[3],power2))
+    plans_feature['price_have_0_num'] = plans['price'].map(lambda x:len([i for i in x if i==0]))
+    plans_feature['price_have_0_ratio'] = plans_feature['price_have_0_num'] / plans_feature['transport_mode_len']
+    plans_feature['price_mean'] = plans['price'].map(lambda x:np.mean(x))
+    plans_feature['distance_mean'] = plans['distance'].map(lambda x:np.mean(x))
+    plans_feature['eta_mean'] = plans['eta'].map(lambda x:np.mean(x))
 
-    plans_feature['{}_{}_itselfrank'.format(now,'dot')] = emb1
-    plans_feature['{}_{}_moderank'.format(now,'dot')] = emb2
-    plans_feature['{}_{}_his_mode'.format(now,'dot')] = emb3
-    
-    plans_feature['{}_{}_itselfrank'.format(now,'dot_power')] = emb5
-    plans_feature['{}_{}_moderank'.format(now,'dot_power')] = emb6
-    plans_feature['{}_{}_his_mode'.format(now,'dot_power')] = emb7
-    
-plans_feature['transport_dot_rank'] = emb4
-plans_feature['transport_dot_power_rank'] = emb8
+    plans_feature['distance_min'] = plans['distance'].map(lambda x:np.min(x))
+    plans_feature['distance_max'] = plans['distance'].map(lambda x:np.max(x))
+    plans_feature['distance_std'] = plans['distance'].map(lambda x:np.std(x))
+    plans_feature['distance_sum'] = plans['distance'].map(lambda x:np.sum(x))
+    # plans_feature['distance_skew'] = plans['distance'].map(lambda x:stats.skew(x))
+    # plans_feature['distance_kurt'] = plans['distance'].map(lambda x:stats.kurtosis(x))
 
-distance_pair = [
-    ('eta_array','price_array'),
-    ('eta_array','distance_array'),
-    ('price_array','distance_array'),
-    ('eta_array','transport_mode_array'),
-    ('eta_array','mode_rank_array'),
-    ('price_array','transport_mode_array'),
-    ('price_array','mode_rank_array'),
-    ('distance_array','transport_mode_array'),
-    ('distance_array','mode_rank_array'),
-]
+    plans_feature['eta_min'] = plans['eta'].map(lambda x:np.min(x))
+    plans_feature['eta_max'] = plans['eta'].map(lambda x:np.max(x))
+    plans_feature['eta_std'] = plans['eta'].map(lambda x:np.std(x))
+    plans_feature['eta_sum'] = plans['eta'].map(lambda x:np.sum(x))
+    # plans_feature['eta_skew'] = plans['eta'].map(lambda x:stats.skew(x))
+    # plans_feature['eta_kurt'] = plans['eta'].map(lambda x:stats.kurtosis(x))
 
-for i in tqdm(distance_pair):
-    plans_feature['{}_l2_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'euclidean'),plans[i[0]],plans[i[1]]))
-    plans_feature['{}_cos_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'cosine'),plans[i[0]],plans[i[1]]))
-    
-#     'braycurtis', 'canberra', 'chebyshev', 'cityblock',
-#     'correlation', 'cosine', 'dice', 'euclidean', 'hamming',
-#     'jaccard', 'jensenshannon', 'kulsinski', 'y7mahalanobis', 'matching',
-#     'minkowski', 'rogerstanimoto', 'russellrao', 'seuclidean',
-#     'sokalmichener', 'sokalsneath', 'sqeuclidean', 'yule'.
+    plans_feature['transport_mode_mode'] = plans['transport_mode'].map(lambda x:stats.mode(x))
+    plans_feature['transport_mode_mode_count'] = plans_feature['transport_mode_mode'].map(lambda x:x[1][0])
+    plans_feature['transport_mode_mode'] = plans_feature['transport_mode_mode'].map(lambda x:x[0][0])
+    plans_feature['transport_mode_transform_count'] = plans_feature.groupby(['transport_mode_mode','transport_mode_mode_count'])['sid'].transform('count')
 
-plans_feature = plans_feature.sort_values(by=['sid']).reset_index(drop=True)
 
-space_time = feature[['sid']].merge(queries,on=['sid'],how='left').merge(plans[['sid','plan_time']],on='sid',how='left')
-space_time['time_diff'] = ((space_time['req_time']-space_time['plan_time'])*1e-9).astype(int)
-space_time['req_time_dow'] = space_time['req_time'].dt.dayofweek
-space_time['req_time_woy'] = space_time['req_time'].dt.weekofyear
-space_time['req_is_weekend'] = (space_time['req_time'].dt.weekday>=5).astype(int)
-space_time['req_time_hour'] = space_time['req_time'].dt.hour+space_time['req_time'].dt.minute/60
-space_time['req_time_hour_0'] = space_time['req_time'].dt.hour
 
-for i in tqdm(['o','d']):
-    space_time[i+'x'] = space_time[i].apply(lambda x:float(x.split(',')[0]))
-    space_time[i+'y'] = space_time[i].apply(lambda x:float(x.split(',')[1]))
+    print(plans.shape,plans.columns)
+    for now in ['distance','price','eta']:
+        emb1,emb2,emb3,emb4,emb5,emb6,emb7,emb8 = [],[],[],[],[],[],[],[]
+        for i in tqdm(plans[['{}_array'.format(now),'{}_rank_array'.format(now),'mode_rank_array','transport_mode_array']].values):
+            power1,power2 = [],[]
+            for j in range(len(i[1])):
+                power1.append(i[1][j]*3**(padding_maxlen-j-1))
+                power2.append(i[2][j]*3**(padding_maxlen-j-1))
+            emb1.append(np.dot(i[0],i[1]))
+            emb2.append(np.dot(i[0],i[2]))
+            emb3.append(np.dot(i[3],i[1]))
+            emb4.append(np.dot(i[3],i[2]))
+            emb5.append(np.dot(i[0],power1))
+            emb6.append(np.dot(i[0],power2))
+            emb7.append(np.dot(i[3],power1))
+            emb8.append(np.dot(i[3],power2))
 
-city = []
-for i in tqdm(space_time['o']):
-    city.append(get_city(i))
-    
-space_time['city'] = city
+        plans_feature['{}_{}_itselfrank'.format(now,'dot')] = emb1
+        plans_feature['{}_{}_moderank'.format(now,'dot')] = emb2
+        plans_feature['{}_{}_his_mode'.format(now,'dot')] = emb3
 
-space_time['odl2_dis'] = np.sqrt((space_time['dx']-space_time['ox'])**2+(space_time['dy']-space_time['oy'])**2)
-space_time['dis_x'] = space_time['dx']-space_time['ox']
-space_time['dis_y'] = space_time['dy']-space_time['oy']
-sphere_dis = []
-deg = []
-mah = []
-for i in tqdm(space_time[['oy','ox','dy','dx']].values):
-    sphere_dis.append(getDistance(i[0],i[1],i[2],i[3]))
-    deg.append(bearing(i[0],i[1],i[2],i[3]))
-    mah.append(cal_manhattan_distance(i[1],i[0],i[3],i[2]))
+        plans_feature['{}_{}_itselfrank'.format(now,'dot_power')] = emb5
+        plans_feature['{}_{}_moderank'.format(now,'dot_power')] = emb6
+        plans_feature['{}_{}_his_mode'.format(now,'dot_power')] = emb7
 
-space_time['deg'] = deg
-space_time['sphere_dis'] = sphere_dis
-space_time['mah'] = mah
+    plans_feature['transport_dot_rank'] = emb4
+    plans_feature['transport_dot_power_rank'] = emb8
 
-space_time['o_geohash'] = list(map(lambda x,y:geohash.encode(x,y,8),space_time['oy'],space_time['ox']))
-space_time['d_geohash'] = list(map(lambda x,y:geohash.encode(x,y,8),space_time['dy'],space_time['dx']))
+    distance_pair = [
+        ('eta_array','price_array'),
+        ('eta_array','distance_array'),
+        ('price_array','distance_array'),
+        ('eta_array','transport_mode_array'),
+        ('eta_array','mode_rank_array'),
+        ('price_array','transport_mode_array'),
+        ('price_array','mode_rank_array'),
+        ('distance_array','transport_mode_array'),
+        ('distance_array','mode_rank_array'),
+    ]
 
-space_time['o_geohash'] = space_time['o_geohash'].map(geohash2int)
-space_time['d_geohash'] = space_time['d_geohash'].map(geohash2int)
-space_time.replace(np.inf,np.nan,inplace=True)
-print(space_time.shape,space_time.columns)
+    for i in tqdm(distance_pair):
+        plans_feature['{}_l2_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'euclidean'),plans[i[0]],plans[i[1]]))
+        plans_feature['{}_cos_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'cosine'),plans[i[0]],plans[i[1]]))
 
-# Graph Embedding Feature
+    #     'braycurtis', 'canberra', 'chebyshev', 'cityblock',
+    #     'correlation', 'cosine', 'dice', 'euclidean', 'hamming',
+    #     'jaccard', 'jensenshannon', 'kulsinski', 'y7mahalanobis', 'matching',
+    #     'minkowski', 'rogerstanimoto', 'russellrao', 'seuclidean',
+    #     'sokalmichener', 'sokalsneath', 'sqeuclidean', 'yule'.
 
-n2v = True
-s2v = False
-# 同构图
-# No Weight
-to_emb = ['o','d','req_time_hour_0','req_time_dow','ox','oy','dx','dy','pid']
-space_time_odh = space_time[to_emb+['sid']]
-space_time_odh['od'] = space_time_odh['o'] + ',' + space_time_odh['d']
+    plans_feature = plans_feature.sort_values(by=['sid']).reset_index(drop=True)
+    return plans_feature
 
-embedding_od_n2v = get_graph_embedding(data = space_time_odh, cols=['o','d'], embed_size=6, isWeight=False, model_type='Node2Vec')
-embedding_oxdx_n2v = get_graph_embedding(data = space_time_odh, cols=['ox','dx'], embed_size=6, isWeight=False, model_type='Node2Vec')
-embedding_oydy_n2v = get_graph_embedding(data = space_time_odh, cols=['oy','dy'], embed_size=6, isWeight=False, model_type='Node2Vec')
+@timed()
+@file_cache()
+def get_feature_space_time():
+    feature = get_feature_plan_wide()
+    queries = get_queries()
+    plans = get_plans()
+    space_time = feature[['sid']].merge(queries,on=['sid'],how='left').merge(plans[['sid','plan_time']],on='sid',how='left')
+    space_time['time_diff'] = ((space_time['req_time']-space_time['plan_time'])*1e-9).astype(int)
+    space_time['req_time_dow'] = space_time['req_time'].dt.dayofweek
+    space_time['req_time_woy'] = space_time['req_time'].dt.weekofyear
+    space_time['req_is_weekend'] = (space_time['req_time'].dt.weekday>=5).astype(int)
+    space_time['req_time_hour'] = space_time['req_time'].dt.hour+space_time['req_time'].dt.minute/60
+    space_time['req_time_hour_0'] = space_time['req_time'].dt.hour
 
-space_time_odh['o_hour'] = space_time_odh['o'] + "_" + space_time_odh['req_time_hour_0'].astype('str')
-space_time_odh['d_hour'] = space_time_odh['d'] + "_" + space_time_odh['req_time_hour_0'].astype('str')
+    for i in tqdm(['o','d']):
+        space_time[i+'x'] = space_time[i].apply(lambda x:float(x.split(',')[0]))
+        space_time[i+'y'] = space_time[i].apply(lambda x:float(x.split(',')[1]))
 
-space_time_odh['o_dow'] = space_time_odh['o'] + "_" + space_time_odh['req_time_dow'].astype('str')
-space_time_odh['d_dow'] = space_time_odh['d'] + "_" + space_time_odh['req_time_dow'].astype('str')
+    city = []
+    for i in tqdm(space_time['o']):
+        city.append(get_city(i))
 
-space_time_odh['o_pid'] = space_time_odh['o'] + "_" + space_time_odh['pid'].astype('str')
-space_time_odh['d_pid'] = space_time_odh['d'] + "_" + space_time_odh['pid'].astype('str')
+    space_time['city'] = city
 
-embedding_od_hour_n2v = get_graph_embedding(data = space_time_odh, cols=['o_hour','d_hour'], embed_size=6, isWeight=False, model_type='Node2Vec')
-embedding_od_dow_n2v = get_graph_embedding(data = space_time_odh, cols=['o_dow','d_dow'], embed_size=6, isWeight=False, model_type='Node2Vec')
-embedding_od_pid_n2v = get_graph_embedding(data = space_time_odh, cols=['o_pid','d_pid'], embed_size=6, isWeight=False, model_type='Node2Vec')
+    space_time['odl2_dis'] = np.sqrt((space_time['dx']-space_time['ox'])**2+(space_time['dy']-space_time['oy'])**2)
+    space_time['dis_x'] = space_time['dx']-space_time['ox']
+    space_time['dis_y'] = space_time['dy']-space_time['oy']
+    sphere_dis = []
+    deg = []
+    mah = []
+    for i in tqdm(space_time[['oy','ox','dy','dx']].values):
+        sphere_dis.append(getDistance(i[0],i[1],i[2],i[3]))
+        deg.append(bearing(i[0],i[1],i[2],i[3]))
+        mah.append(cal_manhattan_distance(i[1],i[0],i[3],i[2]))
 
-# Weight
-space_time_odh['weight'] = space_time_odh.groupby(['o'])['d'].transform('count')
-embedding_od_n2v_weight = get_graph_embedding(data = space_time_odh, cols=['o','d','weight'], embed_size=6, isWeight=True, weight_col=['weight'],model_type='Node2Vec')
+    space_time['deg'] = deg
+    space_time['sphere_dis'] = sphere_dis
+    space_time['mah'] = mah
 
-space_time_odh['weight'] = space_time_odh.groupby(['o_hour'])['d_hour'].transform('count')
-embedding_od_hour_n2v_weight = get_graph_embedding(data = space_time_odh, cols=['o_hour','d_hour','weight'], embed_size=6, isWeight=True, weight_col=['weight'],model_type='Node2Vec')
+    space_time['o_geohash'] = list(map(lambda x,y:geohash.encode(x,y,8),space_time['oy'],space_time['ox']))
+    space_time['d_geohash'] = list(map(lambda x,y:geohash.encode(x,y,8),space_time['dy'],space_time['dx']))
 
-space_time_odh['weight'] = space_time_odh.groupby(['o_dow'])['d_dow'].transform('count')
-embedding_od_dow_n2v_weight = get_graph_embedding(data = space_time_odh, cols=['o_dow','d_dow','weight'], embed_size=6, isWeight=True, weight_col=['weight'],model_type='Node2Vec')
+    space_time['o_geohash'] = space_time['o_geohash'].map(geohash2int)
+    space_time['d_geohash'] = space_time['d_geohash'].map(geohash2int)
+    space_time.replace(np.inf,np.nan,inplace=True)
+    print(space_time.shape,space_time.columns)
 
-# 二分图 考虑Struc2Vec
-if s2v:
-    embedding_od_s2v = get_graph_embedding(data = space_time_odh, cols=['o','d'], embed_size=4, isWeight=False, model_type='Struc2Vec')
-    embedding_od_pid_s2v = get_graph_embedding(data = space_time_odh, cols=['od','pid'], embed_size=4, isWeight=False, model_type='Struc2Vec')
-    embedding_hour_pid_s2v = get_graph_embedding(data = space_time_odh, cols=['pid','req_time_hour_0'], embed_size=4, isWeight=False, model_type='Struc2Vec')
-    embedding_dow_pid_s2v = get_graph_embedding(data = space_time_odh, cols=['pid','req_time_dow'], embed_size=4, isWeight=False, model_type='Struc2Vec')
-    embedding_opid_odow_s2v = get_graph_embedding(data = space_time_odh, cols=['o_pid','o_dow'], embed_size=4, isWeight=False, model_type='Struc2Vec')
+    # Graph Embedding Feature
 
-# Merge Feature
-space_time_odh = space_time_odh.merge(embedding_od_n2v,how='left',on=['o']).\
-                                merge(embedding_oxdx_n2v,how='left',on=['ox']).\
-                                merge(embedding_oydy_n2v,how='left',on=['oy']).\
-                                merge(embedding_od_hour_n2v,how='left',on=['o_hour']).\
-                                merge(embedding_od_dow_n2v,how='left',on=['o_dow']).\
-                                merge(embedding_od_pid_n2v,how='left',on=['o_pid']).\
-                                merge(embedding_od_n2v_weight,how='left',on=['o']).\
-                                merge(embedding_od_hour_n2v_weight,how='left',on=['o_hour']).\
-                                merge(embedding_od_dow_n2v_weight,how='left',on=['o_dow'])
-if s2v:
-    space_time_odh = space_time_odh.merge(embedding_od_s2v,how='left',on=['o']).\
-                                    merge(embedding_od_pid_s2v,how='left',on=['od']).\
-                                    merge(embedding_hour_pid_s2v,how='left',on=['pid']).\
-                                    merge(embedding_dow_pid_s2v,how='left',on=['pid']).\
-                                    merge(embedding_opid_odow_s2v,how='left',on=['o_pid'])
+    n2v = True
+    s2v = False
+    # 同构图
+    # No Weight
+    to_emb = ['o','d','req_time_hour_0','req_time_dow','ox','oy','dx','dy','pid']
+    space_time_odh = space_time[to_emb+['sid']]
+    space_time_odh['od'] = space_time_odh['o'] + ',' + space_time_odh['d']
 
-print(space_time_odh.shape,space_time_odh.columns)
-space_time_odh = space_time_odh[['sid'] + [i for i in space_time_odh.columns if 'emb' in i]]
-print(space_time_odh.shape,space_time_odh.columns)
+    embedding_od_n2v = get_graph_embedding(data = space_time_odh, cols=['o','d'], embed_size=6, isWeight=False, model_type='Node2Vec')
+    embedding_oxdx_n2v = get_graph_embedding(data = space_time_odh, cols=['ox','dx'], embed_size=6, isWeight=False, model_type='Node2Vec')
+    embedding_oydy_n2v = get_graph_embedding(data = space_time_odh, cols=['oy','dy'], embed_size=6, isWeight=False, model_type='Node2Vec')
 
-od_num_threshold = 30
-frac = 0.8
-od_svd_vec = gen_od_vec_feats(space_time.merge(train_clicks[['sid','click_mode']],how='left',on='sid'), cv, frac, od_num_threshold)
-od_svd_vec = od_svd_vec[[i for i in od_svd_vec.columns if 'svd' in i] + ['sid']]
-for i in tqdm(od_svd_vec.columns):
-    od_svd_vec[i] = od_svd_vec[i].astype(np.float16)
+    space_time_odh['o_hour'] = space_time_odh['o'] + "_" + space_time_odh['req_time_hour_0'].astype('str')
+    space_time_odh['d_hour'] = space_time_odh['d'] + "_" + space_time_odh['req_time_hour_0'].astype('str')
 
-# Count Feature
-space_time['sphere_dis_bins'] = pd.cut(space_time['sphere_dis'],bins=20)
-to_group = [
-    'pid','o','d','oy','ox','dy','dx',
-    'req_time_dow','req_is_weekend','req_time_hour','sphere_dis_bins',#'Recommand_0_price_bins',
-    #'Recommand_0_transport_mode','Recommand_1_transport_mode','Recommand_2_transport_mode','price_inMin_0_transport_mode'
-]
+    space_time_odh['o_dow'] = space_time_odh['o'] + "_" + space_time_odh['req_time_dow'].astype('str')
+    space_time_odh['d_dow'] = space_time_odh['d'] + "_" + space_time_odh['req_time_dow'].astype('str')
 
-gen_1,gen_2,gen_3,gen_4 = [],[],[],[]
-for i in tqdm(range(len(to_group))):
-    for j in range(i+1,len(to_group)):
-        gen_1.append([to_group[i],to_group[j]])
-        for k in range(j+1,len(to_group)):
-            for m in range(k+1,len(to_group)):
-                gen_4.append([to_group[i],to_group[j],to_group[k],to_group[m]])
-            gen_3.append([to_group[i],to_group[j],to_group[k]])
-            gen_2.append(([to_group[i],to_group[j]],to_group[k]))
-print(len(gen_1),len(gen_2),len(gen_3),len(gen_4))
+    space_time_odh['o_pid'] = space_time_odh['o'] + "_" + space_time_odh['pid'].astype('str')
+    space_time_odh['d_pid'] = space_time_odh['d'] + "_" + space_time_odh['pid'].astype('str')
 
-agg_count_3 = space_time[to_group+['sid']]
+    embedding_od_hour_n2v = get_graph_embedding(data = space_time_odh, cols=['o_hour','d_hour'], embed_size=6, isWeight=False, model_type='Node2Vec')
+    embedding_od_dow_n2v = get_graph_embedding(data = space_time_odh, cols=['o_dow','d_dow'], embed_size=6, isWeight=False, model_type='Node2Vec')
+    embedding_od_pid_n2v = get_graph_embedding(data = space_time_odh, cols=['o_pid','d_pid'], embed_size=6, isWeight=False, model_type='Node2Vec')
 
-for i in tqdm(gen_3):
-    if ('_'.join(i)+'_agg_count' not in agg_count_3.columns):
-        agg_count_3['_'.join(i)+'_agg_count'] = agg_count_3[i+['sid']].groupby(i)['sid'].transform('count')
-        
-agg_count_3 = agg_count_3[[i for i in agg_count_3.columns if i not in ['sid','click_mode']+to_group]]
+    # Weight
+    space_time_odh['weight'] = space_time_odh.groupby(['o'])['d'].transform('count')
+    embedding_od_n2v_weight = get_graph_embedding(data = space_time_odh, cols=['o','d','weight'], embed_size=6, isWeight=True, weight_col=['weight'],model_type='Node2Vec')
 
-print("Before Merge: ",space_time.shape)
-space_time = pd.concat([space_time,agg_count_3],axis=1)
-print(space_time.shape,agg_count_3.shape)#,agg_count_4.shape
+    space_time_odh['weight'] = space_time_odh.groupby(['o_hour'])['d_hour'].transform('count')
+    embedding_od_hour_n2v_weight = get_graph_embedding(data = space_time_odh, cols=['o_hour','d_hour','weight'], embed_size=6, isWeight=True, weight_col=['weight'],model_type='Node2Vec')
 
-r0 = ['Recommand_0_{}'.format(i) for i in ['eta','distance','price']]
-r1 = ['Recommand_1_{}'.format(i) for i in ['eta','distance','price']]
-r2 = ['Recommand_2_{}'.format(i) for i in ['eta','distance','price']]
-dis = [
-    (feature[r0].fillna(0).values,feature[r1].fillna(0).values),
-    (feature[r0].fillna(0).values,feature[r2].fillna(0).values),
-    (feature[r1].fillna(0).values,feature[r2].fillna(0).values),  
-]
+    space_time_odh['weight'] = space_time_odh.groupby(['o_dow'])['d_dow'].transform('count')
+    embedding_od_dow_n2v_weight = get_graph_embedding(data = space_time_odh, cols=['o_dow','d_dow','weight'], embed_size=6, isWeight=True, weight_col=['weight'],model_type='Node2Vec')
 
-tmp0,tmp1 = [],[]
-for i in dis:
-    col0,col1 = [],[]
-    for j in tqdm(range(len(i[0]))):
-        col0.append(calc_distance(i[0][j],i[1][j],'cosine'))
-        col1.append(calc_distance(i[0][j],i[1][j],'euclidean'))
-    tmp0.append(col0)
-    tmp1.append(col1)
+    # 二分图 考虑Struc2Vec
+    if s2v:
+        embedding_od_s2v = get_graph_embedding(data = space_time_odh, cols=['o','d'], embed_size=4, isWeight=False, model_type='Struc2Vec')
+        embedding_od_pid_s2v = get_graph_embedding(data = space_time_odh, cols=['od','pid'], embed_size=4, isWeight=False, model_type='Struc2Vec')
+        embedding_hour_pid_s2v = get_graph_embedding(data = space_time_odh, cols=['pid','req_time_hour_0'], embed_size=4, isWeight=False, model_type='Struc2Vec')
+        embedding_dow_pid_s2v = get_graph_embedding(data = space_time_odh, cols=['pid','req_time_dow'], embed_size=4, isWeight=False, model_type='Struc2Vec')
+        embedding_opid_odow_s2v = get_graph_embedding(data = space_time_odh, cols=['o_pid','o_dow'], embed_size=4, isWeight=False, model_type='Struc2Vec')
 
-tmp0 = pd.DataFrame(np.array(tmp0).T)
-tmp0.columns = ['Recommand_0_1_cos','Recommand_0_2_cos','Recommand_1_2_cos',]
-to_calc = list(tmp0.columns)
-tmp0['012_cos_mean'] = tmp0[to_calc].mean(axis=1)
-tmp0['012_cos_sum'] = tmp0[to_calc].sum(axis=1)
-tmp0['012_cos_std'] = tmp0[to_calc].std(axis=1)
+    # Merge Feature
+    space_time_odh = space_time_odh.merge(embedding_od_n2v,how='left',on=['o']).\
+                                    merge(embedding_oxdx_n2v,how='left',on=['ox']).\
+                                    merge(embedding_oydy_n2v,how='left',on=['oy']).\
+                                    merge(embedding_od_hour_n2v,how='left',on=['o_hour']).\
+                                    merge(embedding_od_dow_n2v,how='left',on=['o_dow']).\
+                                    merge(embedding_od_pid_n2v,how='left',on=['o_pid']).\
+                                    merge(embedding_od_n2v_weight,how='left',on=['o']).\
+                                    merge(embedding_od_hour_n2v_weight,how='left',on=['o_hour']).\
+                                    merge(embedding_od_dow_n2v_weight,how='left',on=['o_dow'])
+    if s2v:
+        space_time_odh = space_time_odh.merge(embedding_od_s2v,how='left',on=['o']).\
+                                        merge(embedding_od_pid_s2v,how='left',on=['od']).\
+                                        merge(embedding_hour_pid_s2v,how='left',on=['pid']).\
+                                        merge(embedding_dow_pid_s2v,how='left',on=['pid']).\
+                                        merge(embedding_opid_odow_s2v,how='left',on=['o_pid'])
 
-tmp1 = pd.DataFrame(np.array(tmp1).T)
-tmp1.columns = ['Recommand_0_1_l2','Recommand_0_2_l2','Recommand_1_2_l2']
-to_calc = list(tmp1.columns)
+    print(space_time_odh.shape,space_time_odh.columns)
+    space_time_odh = space_time_odh[['sid'] + [i for i in space_time_odh.columns if 'emb' in i]]
+    print(space_time_odh.shape,space_time_odh.columns)
 
-tmp1['012_l2_mean'] = tmp1[to_calc].mean(axis=1)
-tmp1['012_l2_sum'] = tmp1[to_calc].sum(axis=1)
-tmp1['012_l2_std'] = tmp1[to_calc].std(axis=1)
 
-feature = pd.concat([feature, tmp0, tmp1],axis=1)
-print(feature.shape)
+    # Count Feature
+    space_time['sphere_dis_bins'] = pd.cut(space_time['sphere_dis'],bins=20)
+    to_group = [
+        'pid','o','d','oy','ox','dy','dx',
+        'req_time_dow','req_is_weekend','req_time_hour','sphere_dis_bins',#'Recommand_0_price_bins',
+        #'Recommand_0_transport_mode','Recommand_1_transport_mode','Recommand_2_transport_mode','price_inMin_0_transport_mode'
+    ]
 
-# Sequence 2 Sequence Graph Embedding
-to_build = [
-    space_time[['sid','o','d','pid','req_time_hour_0','req_time_dow']],
-    feature[[i for i in feature.columns if (('Recommand_' in i) | ('inMin' in i)) & ('transport_mode' in i)]],
-    plans[[i for i in plans.columns if 'array' in i] + ['transport_mode_rank']]
-]
-to_build = pd.concat(to_build,axis=1)
-to_build['od'] = to_build['o'] + to_build['d']
-to_build['od_pid'] = to_build['od'] + to_build['pid'].astype('str')
-to_build['price_distance_eta_inMin0'] = to_build['price_inMin_0_transport_mode'].astype('str') + to_build['eta_inMin_0_transport_mode'].astype('str') + to_build['distance_inMin_0_transport_mode'].astype('str')
+    gen_1,gen_2,gen_3,gen_4 = [],[],[],[]
+    for i in tqdm(range(len(to_group))):
+        for j in range(i+1,len(to_group)):
+            gen_1.append([to_group[i],to_group[j]])
+            for k in range(j+1,len(to_group)):
+                for m in range(k+1,len(to_group)):
+                    gen_4.append([to_group[i],to_group[j],to_group[k],to_group[m]])
+                gen_3.append([to_group[i],to_group[j],to_group[k]])
+                gen_2.append(([to_group[i],to_group[j]],to_group[k]))
+    print(len(gen_1),len(gen_2),len(gen_3),len(gen_4))
 
-to_build_col = [i for i in to_build.columns if i not in ['sid']]
+    agg_count_3 = space_time[to_group+['sid']]
 
-embedding_1 = get_graph_embedding(data = to_build, cols=['od_pid','transport_mode_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_2 = get_graph_embedding(data = to_build, cols=['od_pid','transport_mode_rank'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_3 = get_graph_embedding(data = to_build, cols=['transport_mode_array','transport_mode_rank'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_4 = get_graph_embedding(data = to_build, cols=['od','transport_mode_rank'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_5 = get_graph_embedding(data = to_build, cols=['od','transport_mode_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_6 = get_graph_embedding(data = to_build, cols=['od','price_distance_eta_inMin0'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    for i in tqdm(gen_3):
+        if ('_'.join(i)+'_agg_count' not in agg_count_3.columns):
+            agg_count_3['_'.join(i)+'_agg_count'] = agg_count_3[i+['sid']].groupby(i)['sid'].transform('count')
 
-embedding_7 = get_graph_embedding(data = to_build, cols=['pid','transport_mode_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_8 = get_graph_embedding(data = to_build, cols=['pid','price_distance_eta_inMin0'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_9 = get_graph_embedding(data = to_build, cols=['pid','price_rank_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_10 = get_graph_embedding(data = to_build, cols=['pid','distance_rank_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_11 = get_graph_embedding(data = to_build, cols=['pid','eta_rank_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
-embedding_12 = get_graph_embedding(data = to_build, cols=['price_distance_eta_inMin0','transport_mode_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    agg_count_3 = agg_count_3[[i for i in agg_count_3.columns if i not in ['sid','click_mode']+to_group]]
 
-to_build = to_build.merge(embedding_1,how='left',on=['od_pid']).\
-                    merge(embedding_2,how='left',on=['od_pid']).\
-                    merge(embedding_3,how='left',on=['transport_mode_array']).\
-                    merge(embedding_4,how='left',on=['od']).\
-                    merge(embedding_5,how='left',on=['od']).\
-                    merge(embedding_6,how='left',on=['od']).\
-                    merge(embedding_7,how='left',on=['pid']).\
-                    merge(embedding_8,how='left',on=['pid']).\
-                    merge(embedding_9,how='left',on=['pid']).\
-                    merge(embedding_10,how='left',on=['pid']).\
-                    merge(embedding_11,how='left',on=['pid']).\
-                    merge(embedding_12,how='left',on=['price_distance_eta_inMin0'])
+    print("Before Merge: ",space_time.shape)
+    space_time = pd.concat([space_time,agg_count_3],axis=1)
+    print(space_time.shape,agg_count_3.shape)#,agg_count_4.shape
+    return space_time
 
-to_build = to_build[[i for i in to_build.columns if i not in to_build_col]].sort_values(by=['sid'],ascending=True)
 
-# Text
-N_COM = 5
+@timed()
+@file_cache()
+def get_feature_od_svd_vec():
+    space_time = get_feature_space_time()
+    train_clicks = get_train_clicks()
+    od_num_threshold = 30
+    frac = 0.8
+    od_svd_vec = gen_od_vec_feats(space_time.merge(train_clicks[['sid','click_mode']],how='left',on='sid'),
+                                  cv, frac, od_num_threshold)
+    od_svd_vec = od_svd_vec[[i for i in od_svd_vec.columns if 'svd' in i] + ['sid']]
+    for i in tqdm(od_svd_vec.columns):
+        od_svd_vec[i] = od_svd_vec[i].astype(np.float16)
+    return od_svd_vec
 
-vct = CountVectorizer(stop_words='english',analyzer='char_wb', lowercase=False,min_df=2)
-svd = TruncatedSVD(n_components=N_COM, random_state=2019)
-tfvec = TfidfVectorizer(ngram_range=(1, 6),analyzer='char_wb')
-text_feature = plans[['sid']].sort_values(by=['sid'])
+@timed()
+@file_cache()
+def get_feature_build() :
+    feature = get_feature_plan_wide()
+    r0 = ['Recommand_0_{}'.format(i) for i in ['eta','distance','price']]
+    r1 = ['Recommand_1_{}'.format(i) for i in ['eta','distance','price']]
+    r2 = ['Recommand_2_{}'.format(i) for i in ['eta','distance','price']]
+    dis = [
+        (feature[r0].fillna(0).values,feature[r1].fillna(0).values),
+        (feature[r0].fillna(0).values,feature[r2].fillna(0).values),
+        (feature[r1].fillna(0).values,feature[r2].fillna(0).values),
+    ]
 
-for i in tqdm(['distance','price','eta','transport_mode']):
-    text = plans[i].astype(str).fillna('NAN').values
-    x = tfvec.fit_transform(text)
-    x = svd.fit_transform(x)
-    svd_feas = pd.DataFrame(x)
-    svd_feas.columns = ['{}_svd_tfidf_fea_{}'.format(i,j) for j in range(N_COM)]
-    svd_feas['sid'] = plans['sid'].values
-    text_feature = text_feature.merge(svd_feas, on='sid', how='left')
+    tmp0,tmp1 = [],[]
+    for i in dis:
+        col0,col1 = [],[]
+        for j in tqdm(range(len(i[0]))):
+            col0.append(calc_distance(i[0][j],i[1][j],'cosine'))
+            col1.append(calc_distance(i[0][j],i[1][j],'euclidean'))
+        tmp0.append(col0)
+        tmp1.append(col1)
 
-    x = vct.fit_transform(text)
-    x = svd.fit_transform(x)
-    svd_feas = pd.DataFrame(x)
-    svd_feas.columns = ['{}_svd_countvec_fea_{}'.format(i,j) for j in range(N_COM)]
-    svd_feas['sid'] = plans['sid'].values
-    text_feature = text_feature.merge(svd_feas, on='sid', how='left')
+    tmp0 = pd.DataFrame(np.array(tmp0).T)
+    tmp0.columns = ['Recommand_0_1_cos','Recommand_0_2_cos','Recommand_1_2_cos',]
+    to_calc = list(tmp0.columns)
+    tmp0['012_cos_mean'] = tmp0[to_calc].mean(axis=1)
+    tmp0['012_cos_sum'] = tmp0[to_calc].sum(axis=1)
+    tmp0['012_cos_std'] = tmp0[to_calc].std(axis=1)
 
-text_feature = text_feature.sort_values(by=['sid'])
-print(text_feature.shape)
+    tmp1 = pd.DataFrame(np.array(tmp1).T)
+    tmp1.columns = ['Recommand_0_1_l2','Recommand_0_2_l2','Recommand_1_2_l2']
+    to_calc = list(tmp1.columns)
 
-pid_stats = feature[['sid']].merge(queries[['sid','pid']],how='left',on='sid')
-pid_stats = pid_stats.merge(profiles,on='pid',how='left')
-print(pid_stats.shape)
+    tmp1['012_l2_mean'] = tmp1[to_calc].mean(axis=1)
+    tmp1['012_l2_sum'] = tmp1[to_calc].sum(axis=1)
+    tmp1['012_l2_std'] = tmp1[to_calc].std(axis=1)
 
-tmp = data[['pid','transport_mode']].groupby(['pid'])['transport_mode'].agg(['median','std','nunique','count',get_mode,get_mode_count]).add_prefix('pid_transport_mode_').reset_index()
-pid_stats = pid_stats.merge(tmp,how='left',on='pid')
+    feature = pd.concat([feature, tmp0, tmp1],axis=1)
+    print(feature.shape)
 
-N_COM = 5
-x = profiles.drop(['pid'], axis=1).values
-svd = TruncatedSVD(n_components=N_COM, n_iter=20, random_state=2019)
-svd_x = svd.fit_transform(x)
-svd_feas = pd.DataFrame(svd_x)
-svd_feas.columns = ['svd_pid_fea_{}'.format(i) for i in range(N_COM)]
-svd_feas['pid'] = profiles['pid'].values
-pid_stats['pid'] = pid_stats['pid'].fillna(-1)
-pid_stats = pid_stats.merge(svd_feas, on='pid', how='left')
-print(pid_stats.shape)
-pid_stats['isnull_sum_pid'] = pid_stats[pid_stats.columns].isnull().sum(axis=1)
+    # Sequence 2 Sequence Graph Embedding
+    space_time = get_feature_space_time()
+    plans = get_plans()
+    to_build = [
+        space_time[['sid','o','d','pid','req_time_hour_0','req_time_dow']],
+        feature[[i for i in feature.columns if (('Recommand_' in i) | ('inMin' in i)) & ('transport_mode' in i)]],
+        plans[[i for i in plans.columns if 'array' in i] + ['transport_mode_rank']]
+    ]
+    to_build = pd.concat(to_build,axis=1)
+    to_build['od'] = to_build['o'] + to_build['d']
+    to_build['od_pid'] = to_build['od'] + to_build['pid'].astype('str')
+    to_build['price_distance_eta_inMin0'] = to_build['price_inMin_0_transport_mode'].astype('str') + to_build['eta_inMin_0_transport_mode'].astype('str') + to_build['distance_inMin_0_transport_mode'].astype('str')
 
-for i in tqdm(['price','eta','distance']):
-    tmp = data[['pid',i]].groupby(['pid'])[i].agg(['std','min','max','mean']).add_prefix('pid_{}_'.format(i)).reset_index()
+    to_build_col = [i for i in to_build.columns if i not in ['sid']]
+
+    embedding_1 = get_graph_embedding(data = to_build, cols=['od_pid','transport_mode_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_2 = get_graph_embedding(data = to_build, cols=['od_pid','transport_mode_rank'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_3 = get_graph_embedding(data = to_build, cols=['transport_mode_array','transport_mode_rank'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_4 = get_graph_embedding(data = to_build, cols=['od','transport_mode_rank'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_5 = get_graph_embedding(data = to_build, cols=['od','transport_mode_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_6 = get_graph_embedding(data = to_build, cols=['od','price_distance_eta_inMin0'], embed_size=4, isWeight=False, model_type='Node2Vec')
+
+    embedding_7 = get_graph_embedding(data = to_build, cols=['pid','transport_mode_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_8 = get_graph_embedding(data = to_build, cols=['pid','price_distance_eta_inMin0'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_9 = get_graph_embedding(data = to_build, cols=['pid','price_rank_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_10 = get_graph_embedding(data = to_build, cols=['pid','distance_rank_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_11 = get_graph_embedding(data = to_build, cols=['pid','eta_rank_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
+    embedding_12 = get_graph_embedding(data = to_build, cols=['price_distance_eta_inMin0','transport_mode_array'], embed_size=4, isWeight=False, model_type='Node2Vec')
+
+    to_build = to_build.merge(embedding_1,how='left',on=['od_pid']).\
+                        merge(embedding_2,how='left',on=['od_pid']).\
+                        merge(embedding_3,how='left',on=['transport_mode_array']).\
+                        merge(embedding_4,how='left',on=['od']).\
+                        merge(embedding_5,how='left',on=['od']).\
+                        merge(embedding_6,how='left',on=['od']).\
+                        merge(embedding_7,how='left',on=['pid']).\
+                        merge(embedding_8,how='left',on=['pid']).\
+                        merge(embedding_9,how='left',on=['pid']).\
+                        merge(embedding_10,how='left',on=['pid']).\
+                        merge(embedding_11,how='left',on=['pid']).\
+                        merge(embedding_12,how='left',on=['price_distance_eta_inMin0'])
+
+    to_build = to_build[[i for i in to_build.columns if i not in to_build_col]].sort_values(by=['sid'],ascending=True)
+
+    return to_build
+
+@timed()
+@file_cache()
+def get_feature_txt():
+    plans = get_plans()
+    # Text
+    N_COM = 5
+
+    vct = CountVectorizer(stop_words='english',analyzer='char_wb', lowercase=False,min_df=2)
+    svd = TruncatedSVD(n_components=N_COM, random_state=2019)
+    tfvec = TfidfVectorizer(ngram_range=(1, 6),analyzer='char_wb')
+    text_feature = plans[['sid']].sort_values(by=['sid'])
+
+    for i in tqdm(['distance','price','eta','transport_mode']):
+        text = plans[i].astype(str).fillna('NAN').values
+        x = tfvec.fit_transform(text)
+        x = svd.fit_transform(x)
+        svd_feas = pd.DataFrame(x)
+        svd_feas.columns = ['{}_svd_tfidf_fea_{}'.format(i,j) for j in range(N_COM)]
+        svd_feas['sid'] = plans['sid'].values
+        text_feature = text_feature.merge(svd_feas, on='sid', how='left')
+
+        x = vct.fit_transform(text)
+        x = svd.fit_transform(x)
+        svd_feas = pd.DataFrame(x)
+        svd_feas.columns = ['{}_svd_countvec_fea_{}'.format(i,j) for j in range(N_COM)]
+        svd_feas['sid'] = plans['sid'].values
+        text_feature = text_feature.merge(svd_feas, on='sid', how='left')
+
+    text_feature = text_feature.sort_values(by=['sid'])
+    print(text_feature.shape)
+    return text_feature
+
+
+@timed()
+@file_cache()
+def get_feature_pid():
+    profiles = get_profiles().copy()
+    queries = get_queries()
+    data = get_plans_data()
+    feature = get_feature_plan_wide()
+    pid_stats = feature[['sid']].merge(queries[['sid','pid']],how='left',on='sid')
+    pid_stats = pid_stats.merge(profiles,on='pid',how='left')
+    print(pid_stats.shape)
+
+    tmp = data[['pid','transport_mode']].groupby(['pid'])['transport_mode'].agg(['median','std','nunique','count',get_mode,get_mode_count]).add_prefix('pid_transport_mode_').reset_index()
     pid_stats = pid_stats.merge(tmp,how='left',on='pid')
-    
-del pid_stats['pid']
 
-print(pid_stats.shape)
+    N_COM = 5
+    x = profiles.drop(['pid'], axis=1).values
+    svd = TruncatedSVD(n_components=N_COM, n_iter=20, random_state=2019)
+    svd_x = svd.fit_transform(x)
+    svd_feas = pd.DataFrame(svd_x)
+    svd_feas.columns = ['svd_pid_fea_{}'.format(i) for i in range(N_COM)]
+    svd_feas['pid'] = profiles['pid'].values
+    pid_stats['pid'] = pid_stats['pid'].fillna(-1)
+    pid_stats = pid_stats.merge(svd_feas, on='pid', how='left')
+    print(pid_stats.shape)
+    pid_stats['isnull_sum_pid'] = pid_stats[pid_stats.columns].isnull().sum(axis=1)
+
+    for i in tqdm(['price','eta','distance']):
+        tmp = data[['pid',i]].groupby(['pid'])[i].agg(['std','min','max','mean']).add_prefix('pid_{}_'.format(i)).reset_index()
+        pid_stats = pid_stats.merge(tmp,how='left',on='pid')
+
+    del pid_stats['pid']
+
+    return pid_stats
+
+def get_feature_name():
+    feature_name = [i for i in all_data.columns if i not in ['sid','click_mode','plan_time','req_time','label']]
+    return feature_name
+
+def get_feature_all():
+    pid_stats     = get_feature_pid()
+    feature       = get_feature_plan_wide()
+    to_build      = get_feature_build()
+    plans_feature = get_feature_from_plans()
+    text_feature  = get_feature_txt()
+    space_time    = get_feature_space_time()
+    od_svd_vec    = get_feature_od_svd_vec()
 
 
-all_data = pd.concat([pid_stats,not_sid_col(feature),not_sid_col(to_build),
-                      not_sid_col(plans_feature),not_sid_col(text_feature),
-                      not_sid_col(space_time),not_sid_col(od_svd_vec),#ratio,
-                     ],axis=1)
+    all_data = pd.concat([pid_stats,
+                          not_sid_col(feature),
+                          not_sid_col(to_build),
+                          not_sid_col(plans_feature),
+                          not_sid_col(text_feature),
+                          not_sid_col(space_time),
+                          not_sid_col(od_svd_vec),#ratio,
+                         ],axis=1)
 
-all_data = all_data.merge(train_clicks[['sid','click_mode']],how='left',on='sid')
-print(all_data.shape,all_data.columns)
+    train_clicks = get_train_clicks()
+    all_data = all_data.merge(train_clicks[['sid','click_mode']],how='left',on='sid')
+    print(all_data.shape,all_data.columns)
 
-from sklearn.preprocessing import LabelEncoder
+    from sklearn.preprocessing import LabelEncoder
+    cate_feature = ['oy','ox','dx','dy','pid','p0','o','d','o_geohash','d_geohash','req_time_dow','req_is_weekend','sphere_dis_bins']
 
-feature_name = [i for i in all_data.columns if i not in ['sid','click_mode','plan_time','req_time','label']]
-cate_feature = ['oy','ox','dx','dy','pid','p0','o','d','o_geohash','d_geohash','req_time_dow','req_is_weekend','sphere_dis_bins']
+    for i in tqdm(cate_feature):
+        try:
+            lbl = LabelEncoder()
+            all_data[i] = lbl.fit_transform(all_data[i].astype('str'))
+        except:
+            print(i)
+            continue
 
-for i in tqdm(cate_feature):
-    try:
-        lbl = LabelEncoder()
-        all_data[i] = lbl.fit_transform(all_data[i].astype('str'))
-    except:
-        print(i)
-        continue
-    
-print(len(cate_feature),' ',len(feature_name))
+    print(len(cate_feature),)
+    return all_data
 
-# Define F1 Train
+if __name__ == '__main__':
+    all_data = get_feature_all()
+    # Define F1 Train
 
-# CV TRAIN
-from collections import Counter
+    # CV TRAIN
+    from collections import Counter
 
-tr_index = ~all_data['click_mode'].isnull()
-X_train = all_data[tr_index][list(set(feature_name))].reset_index(drop=True)
-y = all_data[tr_index]['click_mode'].reset_index(drop=True)
-X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
-print(X_train.shape,X_test.shape)
-final_pred = []
-cv_score = []
-cv_model = []
-skf = StratifiedKFold(n_splits=5, random_state=2019, shuffle=True)
-for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
-    print(index)
-    lgb_model = lgb.LGBMClassifier(
-        boosting_type="gbdt", num_leaves=128, reg_alpha=0.1, reg_lambda=10,
-        max_depth=-1, n_estimators=3000, objective='multiclass',num_classes=12,
-        subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
-        learning_rate=0.1, random_state=2019 + index, n_jobs=40, metric="None", importance_type='gain'
-    )
-    train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[test_index], y.iloc[train_index], y.iloc[test_index]
-    eval_set = [(test_x[feature_name], test_y)]
-    lgb_model.fit(train_x[feature_name], train_y, eval_set=eval_set,verbose=10,early_stopping_rounds=30,eval_metric=f1_macro)
-    cv_model.append(lgb_model)
-    y_test = lgb_model.predict(X_test[feature_name])
-    y_val = lgb_model.predict_proba(test_x[feature_name])
-    print(Counter(np.argmax(y_val,axis=1)))
-    cv_score.append(get_f1_score(test_y,y_val))
-    if index == 0:
-        final_pred = np.array(y_test).reshape(-1, 1)
-    else:
-        final_pred = np.hstack((final_pred, np.array(y_test).reshape(-1, 1)))
+    feature_name = get_feature_name()
+    tr_index = ~all_data['click_mode'].isnull()
+    X_train = all_data[tr_index][list(set(feature_name))].reset_index(drop=True)
+    y = all_data[tr_index]['click_mode'].reset_index(drop=True)
+    X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
+    print(X_train.shape,X_test.shape)
+    final_pred = []
+    cv_score = []
+    cv_model = []
+    skf = StratifiedKFold(n_splits=5, random_state=2019, shuffle=True)
+    for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
+        with timed_bolck(f'CV_Folder#{index}'):
+            lgb_model = lgb.LGBMClassifier(
+                boosting_type="gbdt", num_leaves=128, reg_alpha=0.1, reg_lambda=10,
+                max_depth=-1, n_estimators=3000, objective='multiclass',num_classes=12,
+                subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
+                learning_rate=0.1, random_state=2019 + index, n_jobs=40, metric="None", importance_type='gain'
+            )
+            train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[test_index], y.iloc[train_index], y.iloc[test_index]
+            eval_set = [(test_x[feature_name], test_y)]
+            lgb_model.fit(train_x[feature_name], train_y, eval_set=eval_set,verbose=10,early_stopping_rounds=30,eval_metric=f1_macro)
+            cv_model.append(lgb_model)
+            y_test = lgb_model.predict(X_test[feature_name])
+            y_val = lgb_model.predict_proba(test_x[feature_name])
+            print(Counter(np.argmax(y_val,axis=1)))
+            cv_score.append(get_f1_score(test_y,y_val))
+            if index == 0:
+                final_pred = np.array(y_test).reshape(-1, 1)
+            else:
+                final_pred = np.hstack((final_pred, np.array(y_test).reshape(-1, 1)))
 #
 # import matplotlib.pyplot as plt
 #
