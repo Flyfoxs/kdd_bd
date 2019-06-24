@@ -1069,6 +1069,7 @@ def get_feature_name():
     feature_name = [i for i in all_data.columns if i not in ['sid','click_mode','plan_time','req_time','label', 'type_']]
     return feature_name
 
+@timed()
 def get_feature_all():
     pid_stats     = get_feature_pid()
     feature       = get_feature_plan_wide()
@@ -1105,13 +1106,14 @@ def get_feature_all():
     from sklearn.preprocessing import LabelEncoder
     cate_feature = ['oy','ox','dx','dy','pid','p0','o','d','o_geohash','d_geohash','req_time_dow','req_is_weekend','sphere_dis_bins']
 
-    for i in tqdm(cate_feature):
-        try:
-            lbl = LabelEncoder()
-            all_data[i] = lbl.fit_transform(all_data[i].astype('str'))
-        except:
-            print(i)
-            continue
+    with timed_bolck('LabelEncoder'):
+        for i in tqdm(cate_feature):
+            try:
+                lbl = LabelEncoder()
+                all_data[i] = lbl.fit_transform(all_data[i].astype('str'))
+            except:
+                logger.exception(i)
+                continue
 
     print(len(cate_feature),)
     return all_data
