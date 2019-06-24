@@ -23,9 +23,407 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from tqdm import tqdm
-
+from file_cache.utils.util_log import timed, timed_bolck
 warnings.filterwarnings('ignore')
 
+
+def jsonLoads(strs, key):
+    '''strs：传进来的json数据
+       key：字典的键
+    '''
+    try:
+        ret = []
+        dict_ = json.loads(strs)
+        for i in dict_:
+            if i[key] == '':
+                ret.append(0)
+            else:
+                ret.append(i[key])
+        return ret
+    except:
+        return [-1]
+
+
+def time_fun(x):
+    try:
+        return time.mktime(x.timetuple())
+    except:
+        return -1
+
+
+def flatten_data(plans, col):
+    """
+    把plans  flatten
+    """
+    df = pd.DataFrame(list(plans[col].values))
+    df['sid'] = plans['sid']
+    dis = pd.DataFrame()
+    for i in df.columns[:-1]:
+        dis_df = df.loc[:, [i, 'sid']].copy()
+        dis_df.columns = [col, 'sid']
+        dis = pd.concat([dis, dis_df], axis=0, )
+    dis = dis.dropna()
+    #     dis = dis.sort_values('sid').reset_index(drop = True)
+    return dis
+
+
+def getDistance(latA, lonA, latB, lonB):  # 球面距离
+    ra = 6378140  # radius of equator: meter
+    rb = 6356755  # radius of polar: meter
+    flatten = (ra - rb) / ra  # Partial rate of the earth
+    # change angle to radians
+    radLatA = radians(latA)
+    radLonA = radians(lonA)
+    radLatB = radians(latB)
+    radLonB = radians(lonB)
+
+    try:
+        pA = atan(rb / ra * tan(radLatA))
+        pB = atan(rb / ra * tan(radLatB))
+        x = acos(sin(pA) * sin(pB) + cos(pA) * cos(pB) * cos(radLonA - radLonB))
+        c1 = (sin(x) - x) * (sin(pA) + sin(pB)) ** 2 / cos(x / 2) ** 2
+        c2 = (sin(x) + x) * (sin(pA) - sin(pB)) ** 2 / sin(x / 2) ** 2
+        dr = flatten / 8 * (c1 - c2)
+        distance = ra * (x + dr)
+        return distance  # meter
+    except:
+        return np.nan
+
+
+def bearing(lat1, lng1, lat2, lng2):  # 角度特征
+    AVG_EARTH_RADIUS = 6378.137  # in km
+    lng_delta_rad = np.radians(lng2 - lng1)
+    lat1, lng1, lat2, lng2 = map(np.radians, (lat1, lng1, lat2, lng2))
+    y = np.sin(lng_delta_rad) * np.cos(lat2)
+    x = np.cos(lat1) * np.sin(lat2) - np.sin(lat1) * np.cos(lat2) * np.cos(lng_delta_rad)
+    return np.degrees(np.arctan2(y, x))
+
+
+def get_city(local):  # 城市编码
+    local = local.split(',')
+    x = float(local[0])
+    y = float(local[1])
+    d1 = (x - 116.41) ** 2 + (y - 39.91) ** 2
+    d2 = (x - 121.43) ** 2 + (y - 31.20) ** 2
+    d3 = (x - 114.06) ** 2 + (y - 22.54) ** 2
+    d4 = (x - 113.26) ** 2 + (y - 23.13) ** 2
+    distance = [d1, d2, d3, d4]
+    return np.argmin(distance)
+
+
+def cal_manhattan_distance(O_lon, O_lat, D_lon, D_lat):  # 曼哈顿距离
+    dlat = O_lat - D_lat
+    a = sin(dlat / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    r = 6371
+    lat_d = c * r
+
+    dlon = O_lat - D_lat
+    a = sin(dlon / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    r = 6371
+    lon_d = c * r
+
+    return lat_d + lon_d
+
+
+base32 = {x: i + 1 for i, x in enumerate(list('0123456789bcdefghjkmnpqrstuvwxyz'))}  # GEOHASH 配置文件
+def geohash2int(geohash_id):
+    result = 0
+    base = 1
+    for each in geohash_id[::-1]:
+        result = result + base32[each] * base
+        base = base * 32
+    return result
+
+
+def get_ktime_feature(k, data, i):  # 排名为I时的特征
+    kfc = data.copy()
+    for time in range(1, k):
+        tmp = kfc.sort_values(by=['sid', i]).drop_duplicates(subset=['sid'], keep='first')
+        kfc = kfc[~kfc.index.isin(tmp.index)]
+    tmp = kfc.sort_values(by=['sid', i]).drop_duplicates(subset=['sid'], keep='first')
+    return tmp
+
+
+def get_mode(x):  # 众数
+    return stats.mode(x)[0][0]
+
+
+def get_mode_count(x):  # 众数的统计值
+    return stats.mode(x)[1][0]
+
+
+# Graph Embedding
+def get_graph_embedding(data=None, cols=None, embed_size=128, isWeight=False, model_type=None, weight_col=[],
+                        isGraph=False, intGraph=None):
+    for i in tqdm([i for i in cols if i not in weight_col]):
+        data[i] = data[i].astype('str')
+    for i in weight_col:
+        data[i] = data[i].astype('int')
+    if isGraph:
+        G = intGraph
+    else:
+        G = nx.DiGraph()
+        if isWeight:
+            G.add_weighted_edges_from(data[cols].drop_duplicates(subset=cols, keep='first').values)
+        else:
+            G.add_edges_from(data[cols].drop_duplicates(subset=cols, keep='first').values)
+    if model_type == 'Node2Vec':
+        model = Node2Vec(G, walk_length=10, num_walks=100, p=0.25, q=4, workers=1)  # init model
+        model.train(embed_size=embed_size, window_size=5, iter=3)  # train model
+    elif model_type == 'DeepWalk':
+        model = DeepWalk(G, walk_length=10, num_walks=80, workers=1)  # init model
+        model.train(embed_size=embed_size, window_size=5, iter=3)  # train model
+    elif model_type == "SDNE":
+        model = SDNE(G, hidden_size=[256, 128])  # init model
+        model.train(embed_size=embed_size, batch_size=3000, epochs=40, verbose=2)  # train model
+    elif model_type == "LINE":
+        model = LINE(G, embedding_size=128, order='second')  # init model,order can be ['first','second','all']
+        model.train(embed_size=embed_size, batch_size=1024, epochs=50, verbose=2)  # train model
+    elif model_type == "Struc2Vec":
+        model = Struc2Vec(G, 10, 100, workers=1, verbose=40, )  # init model
+        model.train(embed_size=embed_size, window_size=5, iter=3)  # train model
+
+    embeddings = model.get_embeddings()  # get embedding vectors
+    #     evaluate_embeddings(embeddings)
+    embeddings = pd.DataFrame(embeddings).T
+    new_col = "".join(cols)
+    embeddings.columns = ['{}_{}_emb_{}'.format(new_col, model_type, i) for i in embeddings.columns]
+    embeddings = embeddings.reset_index().rename(columns={'index': '{}'.format(cols[0])})
+
+    return embeddings
+
+
+
+def gen_pid_vec(x):
+    """
+    根据访问记录生成向量
+    :param x:
+    :return:
+    """
+    vec = np.zeros((24, 12))
+    for v in x.values:
+        vec[v[0], v[1]] = vec[v[0], v[1]] + 1
+    return pd.Series(vec.reshape(24 * 12))
+
+def gen_cluster(cluster_num, X):
+    """
+     # 将数据聚类
+    :param cluster_num:
+    :param X:
+    :return:
+    """
+    kmeans = KMeans(n_clusters=cluster_num)
+    kmeans.fit(X)
+    y_pred = kmeans.predict(X)
+    return y_pred, kmeans
+
+def gen_od_vec_df(sample_od_df, fold, od_num_threshold):
+    """
+    生成访问向量，根据访问次数过滤
+    :param pid_df:
+    :return:
+    """
+    o_vec_columns = ['ov_f{}_{}'.format(fold, i) for i in range(24 * 12)]
+    d_vec_columns = ['dv_f{}_{}'.format(fold, i) for i in range(24 * 12)]
+    o_num_df = sample_od_df.groupby(['o'])[['hour', 'click_mode']].apply(gen_pid_vec).reset_index()
+    o_num_df.columns = ['o'] + o_vec_columns
+    o_num_df[o_vec_columns] = o_num_df[o_vec_columns].astype(np.float32)
+    d_num_df = sample_od_df.groupby(['d'])[['hour', 'click_mode']].apply(gen_pid_vec).reset_index()
+    d_num_df.columns = ['d'] + d_vec_columns
+    d_num_df[d_vec_columns] = d_num_df[d_vec_columns].astype(np.float32)
+    o_num_df['o_query_num'] = o_num_df[o_vec_columns].apply(lambda x: sum(x), axis=1).reset_index(drop=True)
+    d_num_df['d_query_num'] = d_num_df[d_vec_columns].apply(lambda x: sum(x), axis=1).reset_index(drop=True)
+
+    o_filtered_num_df = o_num_df[o_num_df['o_query_num'] >= od_num_threshold]
+    d_filtered_num_df = d_num_df[d_num_df['d_query_num'] >= od_num_threshold]
+    print('o less 500 o size: {}'.format(len(o_filtered_num_df)))
+
+    print('d less 500 d size: {}'.format(len(d_filtered_num_df)))
+
+    return o_filtered_num_df, d_filtered_num_df
+
+def gen_multi_fold(od_df, o_vec_columns, d_vec_columns, fold, frac, od_num_threshold):
+    """
+    五折结果平均
+    :param fold:
+    :return:
+    """
+    ov_vec_list = []
+    dv_vec_list = []
+    # 五折随机抽样，统计 查询用户在不同时间，对不同模式的点击次数
+    for fd in range(fold):
+        # 只抽取 训练数据
+        sample_od_df = od_df.loc[od_df['click_mode'] != -1].sample(frac=frac, random_state=2019)
+        o_filtered_num_df, d_filtered_num_df = gen_od_vec_df(sample_od_df, fd, od_num_threshold)
+        ov_vec_list.append(o_filtered_num_df)
+        dv_vec_list.append(d_filtered_num_df)
+    # 合并五折采样结果
+    o_vec_merge_df = reduce(lambda ldf, rdf: pd.merge(ldf, rdf, on=['o'], how='left'), ov_vec_list)
+    d_vec_merge_df = reduce(lambda ldf, rdf: pd.merge(ldf, rdf, on=['d'], how='left'), dv_vec_list)
+    # 多折平均只值
+    o_fold_df_list = []
+    d_fold_df_list = []
+    for f in range(fold):
+        o_fold_columns = ['ov_f{}_{}'.format(f, i) for i in range(288)]
+        d_fold_columns = ['dv_f{}_{}'.format(f, i) for i in range(288)]
+        o_fold_df_list.append(o_vec_merge_df[o_fold_columns])
+        d_fold_df_list.append(d_vec_merge_df[d_fold_columns])
+    o_merge_folds_data = np.nanmean(np.stack(o_fold_df_list, axis=0), axis=0)
+    d_merge_folds_data = np.nanmean(np.stack(d_fold_df_list, axis=0), axis=0)
+    o_arr = o_vec_merge_df['o'].values[:, np.newaxis]
+    d_arr = d_vec_merge_df['d'].values[:, np.newaxis]
+    o_data = np.hstack([o_arr, o_merge_folds_data])
+    d_data = np.hstack([d_arr, d_merge_folds_data])
+    o_vec_df = pd.DataFrame(o_data)
+    d_vec_df = pd.DataFrame(d_data)
+    o_vec_df.columns = ['o'] + o_vec_columns
+    d_vec_df.columns = ['d'] + d_vec_columns
+
+    return o_vec_df, d_vec_df
+
+def gen_od_svd_vec_df(o_vec_df, d_vec_df, dim, o_svd_columns, d_svd_columns):
+    """
+
+    :param pid_vec_df:
+    :param fold:
+    :return:
+    """
+    o_time_vec = o_vec_df[o_vec_df.columns[1:1 + 288]].values
+    d_time_vec = d_vec_df[d_vec_df.columns[1:1 + 288]].values
+    # svd 降维
+    o_svd = TruncatedSVD(n_components=dim, n_iter=30, random_state=2019)
+    o_svd_x = o_svd.fit_transform(o_time_vec)
+    d_svd = TruncatedSVD(n_components=dim, n_iter=30, random_state=2019)
+    d_svd_x = d_svd.fit_transform(d_time_vec)
+
+    o_svd_vec_df = pd.DataFrame(np.hstack([o_vec_df.values[:, 0:1], o_svd_x]))
+    d_svd_vec_df = pd.DataFrame(np.hstack([d_vec_df.values[:, 0:1], d_svd_x]))
+    o_svd_vec_df.columns = ['o'] + o_svd_columns
+    d_svd_vec_df.columns = ['d'] + d_svd_columns
+
+    return o_svd_vec_df, d_svd_vec_df
+
+def gen_od_vec_feats(base_featuers_df, folds, frac, od_num_threshold):
+    """
+
+    :param base_featuers_df:
+    :param od_num_threshold:
+    :return:
+    """
+    od_df = base_featuers_df[['sid', 'o', 'd', 'plan_time', 'click_mode', 'req_time_hour_0']]
+    od_df.rename(columns={'req_time_hour_0' : 'hour'},inplace=True)
+    od_df['click_mode'].fillna(0,inplace=True)
+    od_df['click_mode'] = od_df['click_mode'].astype(np.int32)
+
+    o_vec_columns = ['ov_{}'.format(i) for i in range(24 * 12)]
+    d_vec_columns = ['dv_{}'.format(i) for i in range(24 * 12)]
+    o_vec_df, d_vec_df = gen_multi_fold(od_df, o_vec_columns, d_vec_columns, folds, frac, od_num_threshold=od_num_threshold)
+    o_svd_vec_list = []
+    d_svd_vec_list = []
+    for dim in [15, 20]:
+        o_svd_columns = ['o_svd_d{}_{}'.format(dim, i) for i in range(dim)]
+        d_svd_columns = ['d_svd_d{}_{}'.format(dim, i) for i in range(dim)]
+        o_svd_vec_df, d_svd_vec_df = gen_od_svd_vec_df(o_vec_df, d_vec_df, dim, o_svd_columns, d_svd_columns)
+        # 对svd向量聚类
+        o_X = o_svd_vec_df[o_svd_columns]
+        d_X = d_svd_vec_df[d_svd_columns]
+        cluster_num_list = [10, 20, 30, 50]
+        for cluster_num in cluster_num_list:
+            o_svd_vec_df['o_vec_svd_cls_d{}_{}'.format(dim, cluster_num)], _ = gen_cluster(cluster_num=cluster_num, X=o_X)
+            d_svd_vec_df['d_vec_svd_cls_d{}_{}'.format(dim, cluster_num)], _ = gen_cluster(cluster_num=cluster_num, X=d_X)
+        o_svd_vec_list.append(o_svd_vec_df)
+        d_svd_vec_list.append(d_svd_vec_df)
+    o_svd_vec_merge = reduce(lambda ldf, rdf: pd.merge(ldf, rdf, on=['o'], how='left'), o_svd_vec_list)
+    d_svd_vec_merge = reduce(lambda ldf, rdf: pd.merge(ldf, rdf, on=['d'], how='left'), d_svd_vec_list)
+
+    merge_df1 = pd.merge(base_featuers_df[['sid', 'o', 'd']], o_svd_vec_merge, on=['o'], how='left')
+    od_svd_vec_merge = pd.merge(merge_df1, d_svd_vec_merge, on=['d'], how='left')
+    return od_svd_vec_merge
+
+
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import f1_score
+
+def tokenize(data):
+    tokenized_docs = [word_tokenize(doc) for doc in data]
+    alpha_tokens = [[t.lower() for t in doc if t.isalpha() == True] for doc in tokenized_docs]
+    lemmatizer = WordNetLemmatizer()
+    lem_tokens = [[lemmatizer.lemmatize(alpha) for alpha in doc] for doc in alpha_tokens]
+    X_stem_as_string = [" ".join(x_t) for x_t in lem_tokens]
+    return X_stem_as_string
+
+
+def not_sid_col(x):
+    return x[[i for i in x.columns if i not in ['sid']]]
+
+def f1_macro(labels, preds):
+    preds = np.argmax(preds.reshape(12, -1), axis=0)
+    score = f1_score(y_true=labels, y_pred=preds, average='weighted')
+    return 'f1_score', score, True
+
+def get_f1_score(y, pred):
+    pred_lst = pred.tolist()
+    pred_lst = [item.index(max(item)) for item in pred_lst]
+    score = []
+    for i in range(12):
+        score.append(f1_score([1 if i==item else 0 for item in y],
+                              [1 if i==item else 0 for item in pred_lst]))
+    c = Counter(y)
+    score = [item*c[ix]/len(y) for ix, item in enumerate(score)]
+    score = np.sum(score)
+    print('f1-score = {:.4f}'.format(score))
+    return score
+
+
+# Plans Feature Distance
+def get_stat(x):
+    res = np.array([i for i in x if i != 0])
+    if len(res) == 0:
+        return 0
+    else:
+        return res
+
+
+def edit_distance(word1, word2):
+    try:
+        len1 = len(word1);
+        len2 = len(word2);
+        dp = np.zeros((len1 + 1, len2 + 1))
+        for i in range(len1 + 1):
+            dp[i][0] = i;
+        for j in range(len2 + 1):
+            dp[0][j] = j;
+
+        for i in range(1, len1 + 1):
+            for j in range(1, len2 + 1):
+                delta = 0 if word1[i - 1] == word2[j - 1] else 1
+                dp[i][j] = min(dp[i - 1][j - 1] + delta, min(dp[i - 1][j] + 1, dp[i][j - 1] + 1))
+        return dp[len1][len2]
+    except:
+        return np.nan
+
+
+def calc_distance(word1, word2, param='jaccard'):
+    #      Param :
+    #     'braycurtis', 'canberra', 'chebyshev', 'cityblock',
+    #     'correlation', 'cosine', 'dice', 'euclidean', 'hamming',
+    #     'jaccard', 'jensenshannon', 'kulsinski', 'mahalanobis', 'matching',
+    #     'minkowski', 'rogerstanimoto', 'russellrao', 'seuclidean',
+    #     'sokalmichener', 'sokalsneath', 'sqeuclidean', 'yule'.
+    try:
+        matV = [word1, word2]
+        return dist.pdist(matV, param)[0]
+    except:
+        return np.nan
+
+
+def get_padding(x, delta=0):
+    if delta != 0:
+        return list((x + delta)) + ([0] * (padding_maxlen - len(x)))
+    else:
+        return list((x)) + ([0] * (padding_maxlen - len(x)))
 
 
 # GLOBAL Param
@@ -53,244 +451,129 @@ if version == 2:
     train_plans_2 = pd.read_csv(input_dir+'train_plans_phase{}.csv'.format(version),parse_dates=['plan_time'],nrows=nrows)
     train_plans_1 = pd.read_csv(input_dir+'train_plans_phase{}.csv'.format(version-1),parse_dates=['plan_time'],nrows=nrows)
     train_plans = train_plans_2.append(train_plans_1).reset_index(drop=True)
+
+    test_plans = pd.read_csv(input_dir+'test_plans.csv',parse_dates=['plan_time'],nrows=nrows)
+
+    print("Use Time {}".format(time.time()-t1))
+# else:
+#     profiles = pd.read_csv(input_dir+'profiles.csv',nrows=nrows)
+#     train_clicks = pd.read_csv(input_dir+'train_clicks.csv',parse_dates=['click_time'],nrows=nrows)
+#     train_plans = pd.read_csv(input_dir+'train_plans.csv',parse_dates=['plan_time'],nrows=nrows)
+#     train_queries = pd.read_csv(input_dir+'train_queries.csv',parse_dates=['req_time'],nrows=nrows)
+#     test_plans = pd.read_csv(input_dir+'test_plans.csv',parse_dates=['plan_time'],nrows=nrows)
+#     test_queries = pd.read_csv(input_dir+'test_queries.csv',parse_dates=['req_time'],nrows=nrows)
+#     print("Use Time {}".format(time.time()-t1))
+
+# print(profiles.shape,train_clicks.shape,train_plans.shape,train_queries.shape)
+# print(test_plans.shape,test_queries.shape)
+
+# if offline:
+#     tmp = train_queries[train_queries['req_time']<'2018-12-01']
+#     train_queries = tmp[tmp['req_time']<'2018-11-24']
+#     test_queries = tmp[tmp['req_time']>='2018-11-24']
+#     del tmp;
+
+@timed()
+def get_queries():
     train_queries_2 = pd.read_csv(input_dir+'train_queries_phase{}.csv'.format(version),parse_dates=['req_time'],nrows=nrows)
     train_queries_1 = pd.read_csv(input_dir+'train_queries_phase{}.csv'.format(version-1),parse_dates=['req_time'],nrows=nrows)
     train_queries = train_queries_2.append(train_queries_1).reset_index(drop=True)
-    test_plans = pd.read_csv(input_dir+'test_plans.csv',parse_dates=['plan_time'],nrows=nrows)
-    test_queries = pd.read_csv(input_dir+'test_queries.csv',parse_dates=['req_time'],nrows=nrows)
-    print("Use Time {}".format(time.time()-t1))
-else:
-    profiles = pd.read_csv(input_dir+'profiles.csv',nrows=nrows)
-    train_clicks = pd.read_csv(input_dir+'train_clicks.csv',parse_dates=['click_time'],nrows=nrows)
-    train_plans = pd.read_csv(input_dir+'train_plans.csv',parse_dates=['plan_time'],nrows=nrows)
-    train_queries = pd.read_csv(input_dir+'train_queries.csv',parse_dates=['req_time'],nrows=nrows)
-    test_plans = pd.read_csv(input_dir+'test_plans.csv',parse_dates=['plan_time'],nrows=nrows)
-    test_queries = pd.read_csv(input_dir+'test_queries.csv',parse_dates=['req_time'],nrows=nrows)
-    print("Use Time {}".format(time.time()-t1))
-    
-print(profiles.shape,train_clicks.shape,train_plans.shape,train_queries.shape)
-print(test_plans.shape,test_queries.shape)
 
-if offline:
-    tmp = train_queries[train_queries['req_time']<'2018-12-01']
-    train_queries = tmp[tmp['req_time']<'2018-11-24']
-    test_queries = tmp[tmp['req_time']>='2018-11-24']
-    del tmp;
+    test_queries = pd.read_csv(input_dir + 'test_queries.csv', parse_dates=['req_time'], nrows=nrows)
 
-def jsonLoads(strs,key):
-    '''strs：传进来的json数据
-       key：字典的键
-    '''
-    try:
-        ret = []
-        dict_ = json.loads(strs)
-        for i in dict_:
-            if i[key]=='':
-                ret.append(0)
-            else:
-                ret.append(i[key])
-        return ret
-    except:
-        return [-1]
-    
-def time_fun(x):
-    try:
-        return time.mktime(x.timetuple())
-    except:
-        return -1
-    
-def flatten_data(col):
-    """
-    把plans  flatten
-    """
-    df = pd.DataFrame(list(plans[col].values))
-    df['sid'] = plans['sid']
-    dis = pd.DataFrame()
-    for i in df.columns[:-1]:
-        dis_df = df.loc[:,[i,'sid']].copy()
-        dis_df.columns = [col,'sid']
-        dis = pd.concat([dis,dis_df],axis=0,)
-    dis = dis.dropna()
-#     dis = dis.sort_values('sid').reset_index(drop = True)
-    return dis
+    train_queries['type_'] = 'train'
+    test_queries['type_'] = 'test'
 
-print("Deal With Plans...")
-plans = pd.concat([train_plans,test_plans],axis=0).reset_index(drop = True)
-queries = pd.concat([train_queries,test_queries],axis=0).reset_index(drop = True)
-train_clicks = train_clicks.merge(train_queries[['sid']],how='right',on='sid')
-train_clicks.fillna(0,inplace=True)
-print(train_clicks.shape)
+    queries = pd.concat([train_queries, test_queries], axis=0).reset_index(drop=True)
+    return queries
 
-data = train_clicks[['sid','click_mode']].copy()
-test_id = test_queries[['sid']].copy()
-data = pd.concat([data,test_id],axis=0,).fillna(-1).reset_index(drop = True)
-plans = data[['sid']].merge(plans,on='sid',how='left').reset_index(drop = True)
-queries = data[['sid']].merge(queries,on='sid',how='left').reset_index(drop = True)
+@timed()
+def get_train_clicks():
+    train_clicks_2 = pd.read_csv(input_dir + 'train_clicks_phase{}.csv'.format(version), parse_dates=['click_time'],
+                                 nrows=nrows)
+    train_clicks_1 = pd.read_csv(input_dir + 'train_clicks_phase{}.csv'.format(version - 1), parse_dates=['click_time'],
+                                 nrows=nrows)
+    train_clicks = train_clicks_2.append(train_clicks_1).reset_index(drop=True)
+    return train_clicks
 
-for i in tqdm(['distance','price','eta','transport_mode']):
-    plans[i] = plans['plans'].apply(jsonLoads, key=i)
+@timed()
+def get_plans():
 
-distance = flatten_data(col = 'distance')
-price = flatten_data(col = 'price')
-price.replace('',np.nan,inplace=True)
-eta = flatten_data(col = 'eta')
-transport_mode = flatten_data(col = 'transport_mode')
+    print("Deal With Plans...")
 
-"""transport_mode_rank"""
-plans['transport_mode_rank'] = plans['transport_mode'].apply(lambda x:np.arange(len(x)))
-plans['distance_rank'] = plans['distance'].apply(lambda x:np.argsort(x))
-plans['price_rank'] = plans['price'].apply(lambda x:np.argsort(x))
-plans['eta_rank'] = plans['eta'].apply(lambda x:np.argsort(x))
-plans['transport_mode_str'] = plans['transport_mode'].astype('str')
-plans['price_str'] = plans['price'].astype('str')
-plans['distance_str'] = plans['distance'].astype('str')
-plans['eta_str'] = plans['eta'].astype('str')
+    plans = pd.concat([train_plans,test_plans],axis=0).reset_index(drop = True)
 
-transport_mode_rank = flatten_data(col = 'transport_mode_rank')
+    train_clicks = get_train_clicks()
 
-plans_df = pd.concat([distance,transport_mode_rank.iloc[:,0],eta.iloc[:,0],transport_mode.iloc[:,0],price.iloc[:,0]],axis=1)
+    train_clicks.fillna(0,inplace=True)
 
-transport_mode_list = plans[['sid','transport_mode']].copy()
-transport_mode_list.columns = ['sid','transport_mode_list']
-plans_df = plans_df.merge(plans[['sid','plan_time']], on='sid',how='left')
-print(plans_df.shape)
+    print(train_clicks.shape)
 
-data = data.merge(plans_df, on='sid',how='left')
-data = data.merge(queries, on='sid',how='left')
-data['ep'] = data['eta'] / data['price'] # 单位时间所需价格
-data['dp'] = data['distance'] / data['price'] # 单位距离所需价格
-data['de'] = data['distance'] / data['eta'] # 单位距离所需时间
-data['ed'] = data['eta'] / data['distance'] # 单位eta所需距离
-data['pe'] = data['price'] / data['eta'] 
-data['pd'] = data['price'] / data['distance']
+    queries = get_queries()
 
-data = data.sort_values(by=['sid'])
-plans = plans.sort_values(by=['sid'])
-plans_df = plans_df.sort_values(by=['sid'])
+    plans = pd.merge(queries[['sid', 'type_']], plans, how='left', on='sid')
+    plans = pd.merge(plans, train_clicks, how='left', on='sid')
+    plans.loc[plans.type_=='test','click_mode'] = -1
 
-print(data.shape,data.columns)
-print("Plans Prepare Finished...")
+    for i in tqdm(['distance','price','eta','transport_mode']):
+        plans[i] = plans['plans'].apply(jsonLoads, key=i)
 
-# OD 
+    """transport_mode_rank"""
+    plans['transport_mode_rank'] = plans['transport_mode'].apply(lambda x:np.arange(len(x)))
+    plans['distance_rank'] = plans['distance'].apply(lambda x:np.argsort(x))
+    plans['price_rank'] = plans['price'].apply(lambda x:np.argsort(x))
+    plans['eta_rank'] = plans['eta'].apply(lambda x:np.argsort(x))
+    plans['transport_mode_str'] = plans['transport_mode'].astype('str')
+    plans['price_str'] = plans['price'].astype('str')
+    plans['distance_str'] = plans['distance'].astype('str')
+    plans['eta_str'] = plans['eta'].astype('str')
+    plans = plans.sort_values(by=['sid'])
+    return plans
 
-def getDistance(latA, lonA, latB, lonB):  # 球面距离
-    ra = 6378140     # radius of equator: meter  
-    rb = 6356755     # radius of polar: meter  
-    flatten = (ra - rb) / ra   # Partial rate of the earth  
-    # change angle to radians  
-    radLatA = radians(latA)  
-    radLonA = radians(lonA)  
-    radLatB = radians(latB)  
-    radLonB = radians(lonB)  
-  
-    try: 
-        pA = atan(rb / ra * tan(radLatA))  
-        pB = atan(rb / ra * tan(radLatB))  
-        x = acos(sin(pA) * sin(pB) + cos(pA) * cos(pB) * cos(radLonA - radLonB))  
-        c1 = (sin(x) - x) * (sin(pA) + sin(pB))**2 / cos(x / 2)**2  
-        c2 = (sin(x) + x) * (sin(pA) - sin(pB))**2 / sin(x / 2)**2  
-        dr = flatten / 8 * (c1 - c2)  
-        distance = ra * (x + dr)  
-        return distance   # meter   
-    except:
-        return np.nan
+@timed()
+def get_plan_df():
+    plans = get_plans()
 
-def bearing(lat1, lng1, lat2, lng2): # 角度特征
-    AVG_EARTH_RADIUS = 6378.137  # in km
-    lng_delta_rad = np.radians(lng2 - lng1)
-    lat1, lng1, lat2, lng2 = map(np.radians, (lat1, lng1, lat2, lng2))
-    y = np.sin(lng_delta_rad) * np.cos(lat2)
-    x = np.cos(lat1) * np.sin(lat2) - np.sin(lat1) * np.cos(lat2) * np.cos(lng_delta_rad)
-    return np.degrees(np.arctan2(y, x))
+    transport_mode_rank = flatten_data(plans, col = 'transport_mode_rank')
+    distance = flatten_data(plans, col='distance', )
+    eta = flatten_data(plans, col='eta')
+    transport_mode = flatten_data(plans, col='transport_mode')
+    price = flatten_data(plans, col='price')
+    price.replace('', np.nan, inplace=True)
 
-def get_city(local): # 城市编码
-    local = local.split(',')
-    x = float(local[0])
-    y = float(local[1])
-    d1 = (x-116.41) ** 2 + (y-39.91) ** 2
-    d2 = (x-121.43) ** 2 + (y-31.20) ** 2
-    d3 = (x-114.06) ** 2 + (y-22.54) ** 2
-    d4 = (x-113.26) ** 2 + (y-23.13) ** 2
-    distance = [d1,d2,d3,d4]
-    return np.argmin(distance)
+    plans_df = pd.concat([distance,transport_mode_rank.iloc[:,0],eta.iloc[:,0],transport_mode.iloc[:,0],price.iloc[:,0]],axis=1)
 
-def cal_manhattan_distance(O_lon, O_lat, D_lon, D_lat): # 曼哈顿距离
-    dlat = O_lat - D_lat
-    a = sin(dlat / 2) ** 2
-    c = 2 * atan2(sqrt(a), sqrt(1-a))
-    r = 6371
-    lat_d = c * r
+    transport_mode_list = plans[['sid','transport_mode']].copy()
+    transport_mode_list.columns = ['sid','transport_mode_list']
+    plans_df = plans_df.merge(plans[['sid','plan_time']], on='sid',how='left')
 
-    dlon = O_lat - D_lat
-    a = sin(dlon / 2) ** 2
-    c = 2 * atan2(sqrt(a), sqrt(1-a))
-    r = 6371
-    lon_d = c * r
+    return plans_df
 
-    return lat_d + lon_d
+@timed()
+def get_plans_data():
+    data = get_plans()
+    data = data.loc[:,['sid','click_mode']]
+    plans_df = get_plan_df()
+    queries = get_queries()
+    data = data.merge(plans_df, on='sid',how='left')
+    data = data.merge(queries, on='sid',how='left')
+    data['ep'] = data['eta'] / data['price'] # 单位时间所需价格
+    data['dp'] = data['distance'] / data['price'] # 单位距离所需价格
+    data['de'] = data['distance'] / data['eta'] # 单位距离所需时间
+    data['ed'] = data['eta'] / data['distance'] # 单位eta所需距离
+    data['pe'] = data['price'] / data['eta']
+    data['pd'] = data['price'] / data['distance']
 
-base32 = {x:i+1 for i,x in enumerate(list('0123456789bcdefghjkmnpqrstuvwxyz') )} # GEOHASH 配置文件
-def geohash2int(geohash_id):
-    result = 0
-    base = 1
-    for each in geohash_id[::-1]:
-        result = result + base32[each] * base
-        base = base*32
-    return result
+    data = data.sort_values(by=['sid'])
 
-def get_ktime_feature(k,data,i): # 排名为I时的特征
-    kfc = data.copy()
-    for time in range(1,k):
-        tmp = kfc.sort_values(by=['sid',i]).drop_duplicates(subset=['sid'],keep='first')
-        kfc = kfc[~kfc.index.isin(tmp.index)]
-    tmp = kfc.sort_values(by=['sid',i]).drop_duplicates(subset=['sid'],keep='first')
-    return tmp
+    print(data.shape,data.columns)
+    print("Plans Prepare Finished...")
+    return data
 
-def get_mode(x):  # 众数
-    return stats.mode(x)[0][0]
-
-def get_mode_count(x):  # 众数的统计值
-    return stats.mode(x)[1][0]
-
-# Graph Embedding 
-def get_graph_embedding(data=None,cols=None,embed_size=128,isWeight=False,model_type=None,weight_col=[],isGraph=False,intGraph=None):
-    
-    for i in tqdm([i for i in cols if i not in weight_col]):
-        data[i] = data[i].astype('str')
-    for i in weight_col:
-        data[i] = data[i].astype('int')
-    if isGraph:
-        G = intGraph
-    else:
-        G = nx.DiGraph()
-        if isWeight:
-            G.add_weighted_edges_from(data[cols].drop_duplicates(subset=cols,keep='first').values)
-        else:
-            G.add_edges_from(data[cols].drop_duplicates(subset=cols,keep='first').values)
-    if model_type == 'Node2Vec':
-        model = Node2Vec(G, walk_length = 10, num_walks = 100,p = 0.25, q = 4, workers = 1)#init model
-        model.train(embed_size=embed_size, window_size = 5, iter = 3)# train model
-    elif model_type == 'DeepWalk' :
-        model = DeepWalk(G,walk_length=10,num_walks=80,workers = 1)#init model
-        model.train(embed_size=embed_size, window_size=5,iter=3)# train model
-    elif model_type == "SDNE" :
-        model = SDNE(G,hidden_size=[256,128]) #init model
-        model.train(embed_size=embed_size, batch_size=3000,epochs=40,verbose=2)# train model
-    elif model_type == "LINE":
-        model = LINE(G,embedding_size=128,order='second') #init model,order can be ['first','second','all']
-        model.train(embed_size=embed_size, batch_size=1024,epochs=50,verbose=2)# train model
-    elif model_type == "Struc2Vec" :
-        model = Struc2Vec(G, 10, 100, workers=1, verbose=40, ) #init model
-        model.train(embed_size=embed_size, window_size = 5, iter = 3)# train model
-        
-    embeddings = model.get_embeddings()# get embedding vectors
-#     evaluate_embeddings(embeddings)
-    embeddings = pd.DataFrame(embeddings).T
-    new_col = "".join(cols)
-    embeddings.columns = ['{}_{}_emb_{}'.format(new_col,model_type,i) for i in embeddings.columns]
-    embeddings = embeddings.reset_index().rename(columns={'index' : '{}'.format(cols[0])})
-
-    return embeddings
+# OD
+queries = get_queries()
+plans = get_plans()
+data  = get_plans_data()
 
 #####  特征工程部分 #####
 
@@ -316,46 +599,6 @@ for i in tqdm(['distance','eta','price']+mixed_col):
         feature = feature.merge(tmp,on='sid',how='left')
         if i in mixed_col:
             break
-
-# Plans Feature Distance
-def get_stat(x):
-    res = np.array([i for i in x if i!=0])
-    if len(res)==0:
-        return 0
-    else:
-        return res
-
-def edit_distance(word1, word2):
-    try:
-        len1 = len(word1);
-        len2 = len(word2);
-        dp = np.zeros((len1 + 1,len2 + 1))
-        for i in range(len1 + 1):
-            dp[i][0] = i;     
-        for j in range(len2 + 1):
-            dp[0][j] = j;
-
-        for i in range(1, len1 + 1):
-            for j in range(1, len2 + 1):
-                delta = 0 if word1[i-1] == word2[j-1] else 1
-                dp[i][j] = min(dp[i - 1][j - 1] + delta, min(dp[i-1][j] + 1, dp[i][j - 1] + 1))   
-        return dp[len1][len2]
-    except:
-        return np.nan
-    
-def calc_distance(word1, word2, param='jaccard'):
-#      Param :
-#     'braycurtis', 'canberra', 'chebyshev', 'cityblock',
-#     'correlation', 'cosine', 'dice', 'euclidean', 'hamming',
-#     'jaccard', 'jensenshannon', 'kulsinski', 'mahalanobis', 'matching',
-#     'minkowski', 'rogerstanimoto', 'russellrao', 'seuclidean',
-#     'sokalmichener', 'sokalsneath', 'sqeuclidean', 'yule'.
-    try:
-        matV = [word1, word2]
-        return dist.pdist(matV, param)[0]
-    except:
-        return np.nan
-        
 
 plans_feature = plans[['sid']]
 plans_feature['mode_array_count_sid'] = plans.groupby(['transport_mode_str'])['sid'].transform('count')
@@ -403,11 +646,7 @@ plans_feature['transport_mode_mode_count'] = plans_feature['transport_mode_mode'
 plans_feature['transport_mode_mode'] = plans_feature['transport_mode_mode'].map(lambda x:x[0][0])
 plans_feature['transport_mode_transform_count'] = plans_feature.groupby(['transport_mode_mode','transport_mode_mode_count'])['sid'].transform('count')
 
-def get_padding(x,delta=0):
-    if delta!=0:
-        return list((x+delta)) + ([0]*(padding_maxlen-len(x)))
-    else:
-        return list((x)) + ([0]*(padding_maxlen-len(x)))
+
 plans['distance_rank_array'] = plans['distance_rank'].map(lambda x:get_padding(x,1))
 plans['eta_rank_array'] = plans['eta_rank'].map(lambda x:get_padding(x,1))
 plans['price_rank_array'] = plans['price_rank'].map(lambda x:get_padding(x,1))
@@ -577,152 +816,6 @@ print(space_time_odh.shape,space_time_odh.columns)
 space_time_odh = space_time_odh[['sid'] + [i for i in space_time_odh.columns if 'emb' in i]]
 print(space_time_odh.shape,space_time_odh.columns)
 
-def gen_pid_vec(x):
-    """
-    根据访问记录生成向量
-    :param x:
-    :return:
-    """
-    vec = np.zeros((24, 12))
-    for v in x.values:
-        vec[v[0], v[1]] = vec[v[0], v[1]] + 1
-    return pd.Series(vec.reshape(24 * 12))
-
-def gen_cluster(cluster_num, X):
-    """
-     # 将数据聚类
-    :param cluster_num:
-    :param X:
-    :return:
-    """
-    kmeans = KMeans(n_clusters=cluster_num)
-    kmeans.fit(X)
-    y_pred = kmeans.predict(X)
-    return y_pred, kmeans
-
-def gen_od_vec_df(sample_od_df, fold, od_num_threshold):
-    """
-    生成访问向量，根据访问次数过滤
-    :param pid_df:
-    :return:
-    """
-    o_vec_columns = ['ov_f{}_{}'.format(fold, i) for i in range(24 * 12)]
-    d_vec_columns = ['dv_f{}_{}'.format(fold, i) for i in range(24 * 12)]
-    o_num_df = sample_od_df.groupby(['o'])[['hour', 'click_mode']].apply(gen_pid_vec).reset_index()
-    o_num_df.columns = ['o'] + o_vec_columns
-    o_num_df[o_vec_columns] = o_num_df[o_vec_columns].astype(np.float32)
-    d_num_df = sample_od_df.groupby(['d'])[['hour', 'click_mode']].apply(gen_pid_vec).reset_index()
-    d_num_df.columns = ['d'] + d_vec_columns
-    d_num_df[d_vec_columns] = d_num_df[d_vec_columns].astype(np.float32)
-    o_num_df['o_query_num'] = o_num_df[o_vec_columns].apply(lambda x: sum(x), axis=1).reset_index(drop=True)
-    d_num_df['d_query_num'] = d_num_df[d_vec_columns].apply(lambda x: sum(x), axis=1).reset_index(drop=True)
-
-    o_filtered_num_df = o_num_df[o_num_df['o_query_num'] >= od_num_threshold]
-    d_filtered_num_df = d_num_df[d_num_df['d_query_num'] >= od_num_threshold]
-    print('o less 500 o size: {}'.format(len(o_filtered_num_df)))
-
-    print('d less 500 d size: {}'.format(len(d_filtered_num_df)))
-
-    return o_filtered_num_df, d_filtered_num_df
-
-def gen_multi_fold(od_df, o_vec_columns, d_vec_columns, fold, frac, od_num_threshold):
-    """
-    五折结果平均
-    :param fold:
-    :return:
-    """
-    ov_vec_list = []
-    dv_vec_list = []
-    # 五折随机抽样，统计 查询用户在不同时间，对不同模式的点击次数
-    for fd in range(fold):
-        # 只抽取 训练数据
-        sample_od_df = od_df.loc[od_df['click_mode'] != -1].sample(frac=frac, random_state=2019)
-        o_filtered_num_df, d_filtered_num_df = gen_od_vec_df(sample_od_df, fd, od_num_threshold)
-        ov_vec_list.append(o_filtered_num_df)
-        dv_vec_list.append(d_filtered_num_df)
-    # 合并五折采样结果
-    o_vec_merge_df = reduce(lambda ldf, rdf: pd.merge(ldf, rdf, on=['o'], how='left'), ov_vec_list)
-    d_vec_merge_df = reduce(lambda ldf, rdf: pd.merge(ldf, rdf, on=['d'], how='left'), dv_vec_list)
-    # 多折平均只值
-    o_fold_df_list = []
-    d_fold_df_list = []
-    for f in range(fold):
-        o_fold_columns = ['ov_f{}_{}'.format(f, i) for i in range(288)]
-        d_fold_columns = ['dv_f{}_{}'.format(f, i) for i in range(288)]
-        o_fold_df_list.append(o_vec_merge_df[o_fold_columns])
-        d_fold_df_list.append(d_vec_merge_df[d_fold_columns])
-    o_merge_folds_data = np.nanmean(np.stack(o_fold_df_list, axis=0), axis=0)
-    d_merge_folds_data = np.nanmean(np.stack(d_fold_df_list, axis=0), axis=0)
-    o_arr = o_vec_merge_df['o'].values[:, np.newaxis]
-    d_arr = d_vec_merge_df['d'].values[:, np.newaxis]
-    o_data = np.hstack([o_arr, o_merge_folds_data])
-    d_data = np.hstack([d_arr, d_merge_folds_data])
-    o_vec_df = pd.DataFrame(o_data)
-    d_vec_df = pd.DataFrame(d_data)
-    o_vec_df.columns = ['o'] + o_vec_columns
-    d_vec_df.columns = ['d'] + d_vec_columns
-
-    return o_vec_df, d_vec_df
-
-def gen_od_svd_vec_df(o_vec_df, d_vec_df, dim, o_svd_columns, d_svd_columns):
-    """
-
-    :param pid_vec_df:
-    :param fold:
-    :return:
-    """
-    o_time_vec = o_vec_df[o_vec_df.columns[1:1 + 288]].values
-    d_time_vec = d_vec_df[d_vec_df.columns[1:1 + 288]].values
-    # svd 降维
-    o_svd = TruncatedSVD(n_components=dim, n_iter=30, random_state=2019)
-    o_svd_x = o_svd.fit_transform(o_time_vec)
-    d_svd = TruncatedSVD(n_components=dim, n_iter=30, random_state=2019)
-    d_svd_x = d_svd.fit_transform(d_time_vec)
-
-    o_svd_vec_df = pd.DataFrame(np.hstack([o_vec_df.values[:, 0:1], o_svd_x]))
-    d_svd_vec_df = pd.DataFrame(np.hstack([d_vec_df.values[:, 0:1], d_svd_x]))
-    o_svd_vec_df.columns = ['o'] + o_svd_columns
-    d_svd_vec_df.columns = ['d'] + d_svd_columns
-
-    return o_svd_vec_df, d_svd_vec_df
-
-def gen_od_vec_feats(base_featuers_df, folds, frac, od_num_threshold):
-    """
-
-    :param base_featuers_df:
-    :param od_num_threshold:
-    :return:
-    """
-    od_df = base_featuers_df[['sid', 'o', 'd', 'plan_time', 'click_mode', 'req_time_hour_0']]
-    od_df.rename(columns={'req_time_hour_0' : 'hour'},inplace=True)
-    od_df['click_mode'].fillna(0,inplace=True)
-    od_df['click_mode'] = od_df['click_mode'].astype(np.int32)
-
-    o_vec_columns = ['ov_{}'.format(i) for i in range(24 * 12)]
-    d_vec_columns = ['dv_{}'.format(i) for i in range(24 * 12)]
-    o_vec_df, d_vec_df = gen_multi_fold(od_df, o_vec_columns, d_vec_columns, folds, frac, od_num_threshold=od_num_threshold)
-    o_svd_vec_list = []
-    d_svd_vec_list = []
-    for dim in [15, 20]:
-        o_svd_columns = ['o_svd_d{}_{}'.format(dim, i) for i in range(dim)]
-        d_svd_columns = ['d_svd_d{}_{}'.format(dim, i) for i in range(dim)]
-        o_svd_vec_df, d_svd_vec_df = gen_od_svd_vec_df(o_vec_df, d_vec_df, dim, o_svd_columns, d_svd_columns)
-        # 对svd向量聚类
-        o_X = o_svd_vec_df[o_svd_columns]
-        d_X = d_svd_vec_df[d_svd_columns]
-        cluster_num_list = [10, 20, 30, 50]
-        for cluster_num in cluster_num_list:
-            o_svd_vec_df['o_vec_svd_cls_d{}_{}'.format(dim, cluster_num)], _ = gen_cluster(cluster_num=cluster_num, X=o_X)
-            d_svd_vec_df['d_vec_svd_cls_d{}_{}'.format(dim, cluster_num)], _ = gen_cluster(cluster_num=cluster_num, X=d_X)
-        o_svd_vec_list.append(o_svd_vec_df)
-        d_svd_vec_list.append(d_svd_vec_df)
-    o_svd_vec_merge = reduce(lambda ldf, rdf: pd.merge(ldf, rdf, on=['o'], how='left'), o_svd_vec_list)
-    d_svd_vec_merge = reduce(lambda ldf, rdf: pd.merge(ldf, rdf, on=['d'], how='left'), d_svd_vec_list)
-
-    merge_df1 = pd.merge(base_featuers_df[['sid', 'o', 'd']], o_svd_vec_merge, on=['o'], how='left')
-    od_svd_vec_merge = pd.merge(merge_df1, d_svd_vec_merge, on=['d'], how='left')
-    return od_svd_vec_merge
-
 od_num_threshold = 30
 frac = 0.8
 od_svd_vec = gen_od_vec_feats(space_time.merge(train_clicks[['sid','click_mode']],how='left',on='sid'), cv, frac, od_num_threshold)
@@ -842,14 +935,6 @@ to_build = to_build[[i for i in to_build.columns if i not in to_build_col]].sort
 # Text
 N_COM = 5
 
-def tokenize(data):
-    tokenized_docs = [word_tokenize(doc) for doc in data]
-    alpha_tokens = [[t.lower() for t in doc if t.isalpha() == True] for doc in tokenized_docs]
-    lemmatizer = WordNetLemmatizer()
-    lem_tokens = [[lemmatizer.lemmatize(alpha) for alpha in doc] for doc in alpha_tokens]
-    X_stem_as_string = [" ".join(x_t) for x_t in lem_tokens]
-    return X_stem_as_string
-
 vct = CountVectorizer(stop_words='english',analyzer='char_wb', lowercase=False,min_df=2)
 svd = TruncatedSVD(n_components=N_COM, random_state=2019)
 tfvec = TfidfVectorizer(ngram_range=(1, 6),analyzer='char_wb')
@@ -902,9 +987,6 @@ del pid_stats['pid']
 print(pid_stats.shape)
 
 
-def not_sid_col(x):
-    return x[[i for i in x.columns if i not in ['sid']]]
-
 all_data = pd.concat([pid_stats,not_sid_col(feature),not_sid_col(to_build),
                       not_sid_col(plans_feature),not_sid_col(text_feature),
                       not_sid_col(space_time),not_sid_col(od_svd_vec),#ratio,
@@ -927,27 +1009,6 @@ for i in tqdm(cate_feature):
         continue
     
 print(len(cate_feature),' ',len(feature_name))
-
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import f1_score
-
-def f1_macro(labels, preds):
-    preds = np.argmax(preds.reshape(12, -1), axis=0)
-    score = f1_score(y_true=labels, y_pred=preds, average='weighted')
-    return 'f1_score', score, True
-
-def get_f1_score(y, pred):
-    pred_lst = pred.tolist()
-    pred_lst = [item.index(max(item)) for item in pred_lst]
-    score = []
-    for i in range(12):
-        score.append(f1_score([1 if i==item else 0 for item in y],
-                              [1 if i==item else 0 for item in pred_lst]))
-    c = Counter(y)
-    score = [item*c[ix]/len(y) for ix, item in enumerate(score)]
-    score = np.sum(score)
-    print('f1-score = {:.4f}'.format(score))
-    return score
 
 # Define F1 Train
 
