@@ -527,32 +527,34 @@ def get_plans():
     for i in tqdm(['distance','price','eta','transport_mode']):
         plans[i] = plans['plans'].apply(jsonLoads, key=i)
 
-    """transport_mode_rank"""
-    plans['transport_mode_rank'] = plans['transport_mode'].apply(lambda x:np.arange(len(x)))
-    plans['distance_rank'] = plans['distance'].apply(lambda x:np.argsort(x))
-    plans['price_rank'] = plans['price'].apply(lambda x:np.argsort(x))
-    plans['eta_rank'] = plans['eta'].apply(lambda x:np.argsort(x))
-    plans['transport_mode_str'] = plans['transport_mode'].astype('str')
-    plans['price_str'] = plans['price'].astype('str')
-    plans['distance_str'] = plans['distance'].astype('str')
-    plans['eta_str'] = plans['eta'].astype('str')
+    with timed_bolck('plans_rank_att'):
+        """transport_mode_rank"""
+        plans['transport_mode_rank'] = plans['transport_mode'].apply(lambda x:np.arange(len(x)))
+        plans['distance_rank'] = plans['distance'].apply(lambda x:np.argsort(x))
+        plans['price_rank'] = plans['price'].apply(lambda x:np.argsort(x))
+        plans['eta_rank'] = plans['eta'].apply(lambda x:np.argsort(x))
+        plans['transport_mode_str'] = plans['transport_mode'].astype('str')
+        plans['price_str'] = plans['price'].astype('str')
+        plans['distance_str'] = plans['distance'].astype('str')
+        plans['eta_str'] = plans['eta'].astype('str')
 
     def get_padding(x, delta=0):
-        padding_maxlen = 8 # padding_maxlen = np.max(plans_feature['transport_mode_len'])
+        padding_maxlen = 7 # padding_maxlen = np.max(plans_feature['transport_mode_len'])
         if delta != 0:
             return list((x + delta)) + ([0] * (padding_maxlen - len(x)))
         else:
             return list((x)) + ([0] * (padding_maxlen - len(x)))
 
-    plans['distance_rank_array'] = plans['distance_rank'].map(lambda x: get_padding(x, 1))
-    plans['eta_rank_array'] = plans['eta_rank'].map(lambda x: get_padding(x, 1))
-    plans['price_rank_array'] = plans['price_rank'].map(lambda x: get_padding(x, 1))
-    plans['mode_rank_array'] = plans['transport_mode_rank'].map(lambda x: get_padding(x, 1))
+    with timed_bolck('plans_array_padding'):
+        plans['distance_rank_array'] = plans['distance_rank'].map(lambda x: get_padding(x, 1))
+        plans['eta_rank_array'] = plans['eta_rank'].map(lambda x: get_padding(x, 1))
+        plans['price_rank_array'] = plans['price_rank'].map(lambda x: get_padding(x, 1))
+        plans['mode_rank_array'] = plans['transport_mode_rank'].map(lambda x: get_padding(x, 1))
 
-    plans['distance_array'] = plans['distance'].map(lambda x: get_padding(x, 0))
-    plans['eta_array'] = plans['eta'].map(lambda x: get_padding(x, 0))
-    plans['price_array'] = plans['price'].map(lambda x: get_padding(x, 0))
-    plans['transport_mode_array'] = plans['transport_mode'].map(lambda x: get_padding(x, 0))
+        plans['distance_array'] = plans['distance'].map(lambda x: get_padding(x, 0))
+        plans['eta_array'] = plans['eta'].map(lambda x: get_padding(x, 0))
+        plans['price_array'] = plans['price'].map(lambda x: get_padding(x, 0))
+        plans['transport_mode_array'] = plans['transport_mode'].map(lambda x: get_padding(x, 0))
 
 
     plans = plans.sort_values(by=['sid'])
@@ -662,7 +664,6 @@ def get_feature_from_plans():
     padding_maxlen = np.max(plans_feature['transport_mode_len'])
 
     print('padding_maxlen=', padding_maxlen)
-
 
 
     plans_feature['price_have_0_num'] = plans['price'].map(lambda x:len([i for i in x if i==0]))
