@@ -1068,21 +1068,23 @@ def get_feature_all():
     feature       = get_feature_plan_wide()
     plans_feature = get_feature_from_plans()
     text_feature  = get_feature_txt()
-    od_svd_vec = get_feature_od_svd_vec()
+
+
 
     # to_build      = get_feature_build()
     #space_time    = get_feature_space_time()
-
+    #od_svd_vec = get_feature_od_svd_vec()
 
 
     all_data = pd.concat([pid_stats,
                           not_sid_col(feature),
-
                           not_sid_col(plans_feature),
                           not_sid_col(text_feature),
-                          not_sid_col(od_svd_vec),
-                          # not_sid_col(space_time),
+
                           # not_sid_col(to_build),
+                          # not_sid_col(space_time),
+                          #not_sid_col(od_svd_vec),
+
                          ],axis=1)
 
     train_clicks = get_train_clicks()
