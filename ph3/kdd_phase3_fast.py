@@ -482,7 +482,8 @@ def get_queries():
     train_queries['type_'] = 'train'
     test_queries['type_'] = 'test'
 
-    queries = pd.concat([train_queries.sample(frac=0.01), test_queries.sample(frac=0.01)], axis=0).reset_index(drop=True)
+    #queries = pd.concat([train_queries.sample(frac=0.01), test_queries.sample(frac=0.01)], axis=0).reset_index(drop=True)
+    queries = pd.concat([train_queries, test_queries], axis=0).reset_index(drop=True)
     return queries
 
 @timed()
@@ -1065,20 +1066,23 @@ def get_feature_name():
 def get_feature_all():
     pid_stats     = get_feature_pid()
     feature       = get_feature_plan_wide()
-    to_build      = get_feature_build()
     plans_feature = get_feature_from_plans()
     text_feature  = get_feature_txt()
-    space_time    = get_feature_space_time()
-    od_svd_vec    = get_feature_od_svd_vec()
+    od_svd_vec = get_feature_od_svd_vec()
+
+    # to_build      = get_feature_build()
+    #space_time    = get_feature_space_time()
+
 
 
     all_data = pd.concat([pid_stats,
                           not_sid_col(feature),
-                          not_sid_col(to_build),
+
                           not_sid_col(plans_feature),
                           not_sid_col(text_feature),
-                          not_sid_col(space_time),
-                          not_sid_col(od_svd_vec),#ratio,
+                          not_sid_col(od_svd_vec),
+                          # not_sid_col(space_time),
+                          # not_sid_col(to_build),
                          ],axis=1)
 
     train_clicks = get_train_clicks()
