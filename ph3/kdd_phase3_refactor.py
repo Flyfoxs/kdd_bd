@@ -1076,7 +1076,7 @@ def get_feature_all():
     text_feature  = get_feature_txt()
 
 
-
+    #Embedding model 耗时比较久
     # to_build      = get_feature_build()
     #space_time    = get_feature_space_time()
     #od_svd_vec = get_feature_od_svd_vec()
@@ -1112,6 +1112,13 @@ def get_feature_all():
     return all_data
 
 if __name__ == '__main__':
+
+    """
+    nohup python ph3/kdd_phase3_refactor.py &
+    """
+
+
+
     all_data = get_feature_all()
     # Define F1 Train
 
