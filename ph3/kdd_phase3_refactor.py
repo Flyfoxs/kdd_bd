@@ -1066,7 +1066,7 @@ def get_feature_pid():
     return pid_stats
 
 def get_feature_name():
-    feature_name = [i for i in all_data.columns if i not in ['sid','click_mode','plan_time','req_time','label']]
+    feature_name = [i for i in all_data.columns if i not in ['sid','click_mode','plan_time','req_time','label', 'type_']]
     return feature_name
 
 def get_feature_all():
@@ -1094,7 +1094,12 @@ def get_feature_all():
                          ],axis=1)
 
     train_clicks = get_train_clicks()
+    queries = get_queries()
+
     all_data = all_data.merge(train_clicks[['sid','click_mode']],how='left',on='sid')
+    train = queries.loc[queries.type_ == 'train']
+    all_data.loc[(all_data.sid.isin(train.sid)) & pd.isna(all_data.click_mode), 'click_mode']=0
+
     print(all_data.shape,all_data.columns)
 
     from sklearn.preprocessing import LabelEncoder
@@ -1114,7 +1119,12 @@ def get_feature_all():
 if __name__ == '__main__':
 
     """
+    运行方式:
     nohup python ph3/kdd_phase3_refactor.py &
+    
+    快速测试代码逻辑错: 
+    get_queries,里面的采样比例即可
+    
     """
 
 
