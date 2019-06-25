@@ -332,7 +332,7 @@ def get_plan_original_deep():
                     plan_list.append(single_plan)
                 # else:
                 #     logger.info(f'Already have moede:{cur_mode} for sid:{row.sid}')
-    res = pd.DataFrame(plan_list).astype(int)
+    res = pd.DataFrame(plan_list)#.astype(int)
 
     logger.debug(f'Try to fillna for plan info:{len(res)}')
     res[plan_items] = res.loc[:,plan_items].fillna('0').replace({'':'0'}).astype(int)
@@ -576,7 +576,7 @@ def get_profile_lda(n_topics):
 
 
 def get_feature_partition(cut_begin=48, cut_end=60):
-    feature = get_feature( ).copy()
+    feature = get_feature( )#.copy()
     sample = feature.loc[(feature['day'] >= cut_begin)
                           & (feature['day'] <= cut_end)
                           & (feature['click_mode'] >=0 )
@@ -650,26 +650,28 @@ def extend_c2v_feature(c_list=['weekday' , 'hour']):
     feature = feature.fillna(0)
 
     return feature.set_index('sid')
-
-@timed()
-def get_feature_ex_bin():
-    feature = get_feature().copy()
-    feature['sid']  = feature.index
-    #feature.index = pd.Series(feature.index).apply(lambda val: val.split('-')[1]).astype(int)
-
-    bin_feature = pd.read_csv('./input/tmp/oof_train_test.csv', index_col='sid')
-
-    feature = pd.concat([feature, bin_feature], axis=1)
-
-    feature = feature.set_index('sid')
-
-    return feature
+#
+# @timed()
+# def get_feature_ex_bin():
+#     feature = get_feature().copy()
+#     feature['sid']  = feature.index
+#     #feature.index = pd.Series(feature.index).apply(lambda val: val.split('-')[1]).astype(int)
+#
+#     bin_feature = pd.read_csv('./input/tmp/oof_train_test.csv', index_col='sid')
+#
+#     feature = pd.concat([feature, bin_feature], axis=1)
+#
+#     feature = feature.set_index('sid')
+#
+#     return feature
 
 
 @timed()
 def get_train_test():
     #feature = get_feature_ex_bin()#.copy()
-    feature = get_feature().copy()
+    feature = get_feature()#.copy()
+    logger.info(f'Size of the feature is:{feature.memory_usage().sum()/1024**2}')
+    logger.info(f'The feaute type summary\n{feature.dtypes.value_counts()}')
 
     #feature = feature.sample(frac=0.2)
 
@@ -679,13 +681,6 @@ def get_train_test():
     # tmp = get_plan_analysis_deep()
     # feature = pd.merge(feature, tmp, left_on='o_seq_0', right_on='transport_mode')
     # feature = feature.set_index('sid')
-
-    if disable_phase1 :
-        old_len = len(feature)
-        feature = feature.loc[feature.phase==2]
-        logger.info(f'Remove {old_len-len(feature)} phase#1 data from {old_len} rows:disable_phase1#{disable_phase1} ')
-
-    #feature = extend_c2v_feature().copy()
 
     click_mode = feature.click_mode
     del feature['click_mode']
