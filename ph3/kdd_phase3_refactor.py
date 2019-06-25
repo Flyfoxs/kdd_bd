@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import scipy.spatial.distance as dist
+from deprecated import deprecated
 
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
@@ -26,6 +27,10 @@ from tqdm import tqdm
 from file_cache.utils.util_log import timed, timed_bolck, logger
 from file_cache.cache import file_cache
 from functools import lru_cache
+import gc
+import fire
+from collections import Counter
+from file_cache.utils.reduce_mem import reduce_mem
 warnings.filterwarnings('ignore')
 
 def jsonLoads(strs, key):
@@ -483,7 +488,8 @@ def get_queries():
     train_queries['type_'] = 'train'
     test_queries['type_'] = 'test'
 
-    #queries = pd.concat([train_queries.sample(frac=0.2), test_queries.sample(frac=0.2)], axis=0).reset_index(drop=True)
+    #frac=0.5
+    #queries = pd.concat([train_queries.sample(frac=frac), test_queries.sample(frac=1)], axis=0).reset_index(drop=True)
     queries = pd.concat([train_queries, test_queries], axis=0).reset_index(drop=True)
     return queries
 
@@ -800,6 +806,43 @@ def get_feature_space_time():
 
     # Graph Embedding Feature
 
+
+    # Count Feature
+    space_time['sphere_dis_bins'] = pd.cut(space_time['sphere_dis'],bins=20)
+    to_group = [
+        'pid','o','d','oy','ox','dy','dx',
+        'req_time_dow','req_is_weekend','req_time_hour','sphere_dis_bins',#'Recommand_0_price_bins',
+        #'Recommand_0_transport_mode','Recommand_1_transport_mode','Recommand_2_transport_mode','price_inMin_0_transport_mode'
+    ]
+
+    gen_1,gen_2,gen_3,gen_4 = [],[],[],[]
+    for i in tqdm(range(len(to_group))):
+        for j in range(i+1,len(to_group)):
+            gen_1.append([to_group[i],to_group[j]])
+            for k in range(j+1,len(to_group)):
+                for m in range(k+1,len(to_group)):
+                    gen_4.append([to_group[i],to_group[j],to_group[k],to_group[m]])
+                gen_3.append([to_group[i],to_group[j],to_group[k]])
+                gen_2.append(([to_group[i],to_group[j]],to_group[k]))
+    print(len(gen_1),len(gen_2),len(gen_3),len(gen_4))
+
+    agg_count_3 = space_time[to_group+['sid']]
+
+    for i in tqdm(gen_3):
+        if ('_'.join(i)+'_agg_count' not in agg_count_3.columns):
+            agg_count_3['_'.join(i)+'_agg_count'] = agg_count_3[i+['sid']].groupby(i)['sid'].transform('count')
+
+    agg_count_3 = agg_count_3[[i for i in agg_count_3.columns if i not in ['sid','click_mode']+to_group]]
+
+    print("Before Merge: ",space_time.shape)
+    space_time = pd.concat([space_time,agg_count_3],axis=1)
+    print(space_time.shape,agg_count_3.shape)#,agg_count_4.shape
+    return space_time
+
+
+@deprecated(reason='Base on the sugg from snake')
+def get_feature_odh():
+    space_time = get_feature_space_time()
     n2v = True
     s2v = False
     # 同构图
@@ -863,39 +906,7 @@ def get_feature_space_time():
     print(space_time_odh.shape,space_time_odh.columns)
     space_time_odh = space_time_odh[['sid'] + [i for i in space_time_odh.columns if 'emb' in i]]
     print(space_time_odh.shape,space_time_odh.columns)
-
-
-    # Count Feature
-    space_time['sphere_dis_bins'] = pd.cut(space_time['sphere_dis'],bins=20)
-    to_group = [
-        'pid','o','d','oy','ox','dy','dx',
-        'req_time_dow','req_is_weekend','req_time_hour','sphere_dis_bins',#'Recommand_0_price_bins',
-        #'Recommand_0_transport_mode','Recommand_1_transport_mode','Recommand_2_transport_mode','price_inMin_0_transport_mode'
-    ]
-
-    gen_1,gen_2,gen_3,gen_4 = [],[],[],[]
-    for i in tqdm(range(len(to_group))):
-        for j in range(i+1,len(to_group)):
-            gen_1.append([to_group[i],to_group[j]])
-            for k in range(j+1,len(to_group)):
-                for m in range(k+1,len(to_group)):
-                    gen_4.append([to_group[i],to_group[j],to_group[k],to_group[m]])
-                gen_3.append([to_group[i],to_group[j],to_group[k]])
-                gen_2.append(([to_group[i],to_group[j]],to_group[k]))
-    print(len(gen_1),len(gen_2),len(gen_3),len(gen_4))
-
-    agg_count_3 = space_time[to_group+['sid']]
-
-    for i in tqdm(gen_3):
-        if ('_'.join(i)+'_agg_count' not in agg_count_3.columns):
-            agg_count_3['_'.join(i)+'_agg_count'] = agg_count_3[i+['sid']].groupby(i)['sid'].transform('count')
-
-    agg_count_3 = agg_count_3[[i for i in agg_count_3.columns if i not in ['sid','click_mode']+to_group]]
-
-    print("Before Merge: ",space_time.shape)
-    space_time = pd.concat([space_time,agg_count_3],axis=1)
-    print(space_time.shape,agg_count_3.shape)#,agg_count_4.shape
-    return space_time
+    return space_time_odh
 
 
 @timed()
@@ -1065,11 +1076,13 @@ def get_feature_pid():
 
     return pid_stats
 
-def get_feature_name():
-    feature_name = [i for i in all_data.columns if i not in ['sid','click_mode','plan_time','req_time','label', 'type_']]
+def get_feature_name(df):
+    feature_name = [i for i in df.columns if i not in ['sid','click_mode','plan_time','req_time','label', 'type_']]
     return feature_name
 
 @timed()
+@file_cache()
+@reduce_mem()
 def get_feature_all():
     pid_stats     = get_feature_pid()
     feature       = get_feature_plan_wide()
@@ -1082,269 +1095,51 @@ def get_feature_all():
     #space_time    = get_feature_space_time()
     #od_svd_vec = get_feature_od_svd_vec()
 
+    with timed_bolck('concat_all'):
+        all_data = pd.concat([pid_stats,
+                              not_sid_col(feature),
+                              not_sid_col(plans_feature),
+                              not_sid_col(text_feature),
 
-    all_data = pd.concat([pid_stats,
-                          not_sid_col(feature),
-                          not_sid_col(plans_feature),
-                          not_sid_col(text_feature),
+                              # not_sid_col(to_build),
+                              # not_sid_col(space_time),
+                              #not_sid_col(od_svd_vec),
 
-                          # not_sid_col(to_build),
-                          # not_sid_col(space_time),
-                          #not_sid_col(od_svd_vec),
+                             ],axis=1)
 
-                         ],axis=1)
-
-    train_clicks = get_train_clicks()
-    queries = get_queries()
-
-    all_data = all_data.merge(train_clicks[['sid','click_mode']],how='left',on='sid')
-    train = queries.loc[queries.type_ == 'train']
-    all_data.loc[(all_data.sid.isin(train.sid)) & pd.isna(all_data.click_mode), 'click_mode']=0
+    with timed_bolck(f'Fill_default_mode'):
+        train_clicks = get_train_clicks()
+        queries = get_queries()
+        all_data = all_data.merge(train_clicks[['sid','click_mode']],how='left',on='sid')
+        train = queries.loc[queries.type_ == 'train']
+        all_data.loc[(all_data.sid.isin(train.sid)) & pd.isna(all_data.click_mode), 'click_mode']=0
 
     print(all_data.shape,all_data.columns)
 
     from sklearn.preprocessing import LabelEncoder
     cate_feature = ['oy','ox','dx','dy','pid','p0','o','d','o_geohash','d_geohash','req_time_dow','req_is_weekend','sphere_dis_bins']
 
-    with timed_bolck('LabelEncoder'):
+    with timed_bolck(f'LabelEncoder#{len(cate_feature)}'):
         for i in tqdm(cate_feature):
             try:
                 lbl = LabelEncoder()
                 all_data[i] = lbl.fit_transform(all_data[i].astype('str'))
             except:
-                logger.exception(i)
+                logger.error(f'Label encode failed:{i}')
                 continue
 
     print(len(cate_feature),)
+    logger.info(f'Size of the all_data is:{all_data.memory_usage().sum()/1024**2}')
+    logger.info(f'The feaute type summary\n{all_data.dtypes.value_counts()}')
     return all_data
 
+
+def gen_feature():
+    odh = get_feature_odh()
+    to_build      = get_feature_build()
+    space_time    = get_feature_space_time()
+    od_svd_vec = get_feature_od_svd_vec()
+
+
 if __name__ == '__main__':
-
-    """
-    运行方式:
-    nohup python ph3/kdd_phase3_refactor.py &
-    
-    快速测试代码逻辑错: 
-    get_queries,里面的采样比例即可
-    
-    """
-
-
-
-    all_data = get_feature_all()
-    # Define F1 Train
-
-    # CV TRAIN
-    from collections import Counter
-
-    feature_name = get_feature_name()
-    tr_index = ~all_data['click_mode'].isnull()
-    X_train = all_data[tr_index][list(set(feature_name))].reset_index(drop=True)
-    y = all_data[tr_index]['click_mode'].reset_index(drop=True)
-    X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
-    print(X_train.shape,X_test.shape)
-    final_pred = []
-    cv_score = []
-    cv_model = []
-    skf = StratifiedKFold(n_splits=5, random_state=2019, shuffle=True)
-    for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
-        with timed_bolck(f'CV_Folder#{index}'):
-            lgb_model = lgb.LGBMClassifier(
-                boosting_type="gbdt", num_leaves=128, reg_alpha=0.1, reg_lambda=10,
-                max_depth=-1, n_estimators=3000, objective='multiclass',num_classes=12,
-                subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
-                learning_rate=0.1, random_state=2019 + index, n_jobs=40, metric="None", importance_type='gain'
-            )
-            train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[test_index], y.iloc[train_index], y.iloc[test_index]
-            eval_set = [(test_x[feature_name], test_y)]
-            lgb_model.fit(train_x[feature_name], train_y, eval_set=eval_set,verbose=10,early_stopping_rounds=30,eval_metric=f1_macro)
-            cv_model.append(lgb_model)
-            y_test = lgb_model.predict(X_test[feature_name])
-            y_val = lgb_model.predict_proba(test_x[feature_name])
-            print(Counter(np.argmax(y_val,axis=1)))
-            cv_score.append(get_f1_score(test_y,y_val))
-            if index == 0:
-                final_pred = np.array(y_test).reshape(-1, 1)
-            else:
-                final_pred = np.hstack((final_pred, np.array(y_test).reshape(-1, 1)))
-#
-# import matplotlib.pyplot as plt
-#
-# fi = []
-# for i in cv_model:
-#     tmp = {
-#         'name' : feature_name,
-#         'score' : i.feature_importances_
-#     }
-#     fi.append(pd.DataFrame(tmp))
-#
-# fi = pd.concat(fi)
-# fig = plt.figure(figsize=(8,5))
-# # fi.groupby(['name'])['score'].agg('sum').sort_values(ascending=False).head(20).plot.barh()
-# fi.groupby(['name'])['score'].agg('mean').sort_values(ascending=False).head(30).plot.barh()
-#
-# cv_pred = np.zeros((X_train.shape[0],12))
-# test_pred = np.zeros((X_test.shape[0],12))
-# for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
-#     print(index)
-#     train_x, test_x, train_y, test_y = X_train.iloc[train_index], X_train.iloc[test_index], y.iloc[train_index], y.iloc[test_index]
-#     y_val = cv_model[index].predict_proba(test_x[feature_name])
-#     print(y_val.shape)
-#     cv_pred[test_index] = y_val
-#     test_pred += cv_model[index].predict_proba(X_test[feature_name]) / 5
-#
-# print(np.mean(cv_score))
-#
-# oof_train = DF(cv_pred)
-# # oof_train.columns = ['label_'+str(i) for i in range(0,12)]
-# oof_train['sid'] = all_data[all_data['click_mode'].notnull()]['sid'].values
-# oof_train[12] = y
-# # oof_train['click_mode'] = all_data[tr_index]['click_mode'].reset_index(drop=True)
-# oof_train.set_index('sid',inplace=True)
-#
-# oof_test = DF(test_pred)
-# # oof_test.columns = ['label_'+str(i) for i in range(0,12)]
-# oof_test['sid'] = all_data[~tr_index]['sid'].values
-# oof_test[12] = np.nan
-# oof_test.set_index('sid',inplace=True)
-#
-# oof_train.to_hdf("../cache_data/stacking_{}_fold_{}_feature_phase2.hdf".format(cv,len(feature_name)),'train')
-# oof_test.to_hdf("../cache_data/stacking_{}_fold_{}_feature_phase2.hdf".format(cv,len(feature_name)),'test')
-#
-# # Offline 后处理前
-#
-# if version == 2:
-#     train_clicks_2 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version),parse_dates=['click_time'],nrows=nrows)
-#     train_clicks_1 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version-1),parse_dates=['click_time'],nrows=nrows)
-#     answer = train_clicks_2.append(train_clicks_1).reset_index(drop=True).fillna(0)
-# else:
-#     answer = pd.read_csv(input_dir+'train_clicks.csv',parse_dates=['click_time'],nrows=nrows)
-#
-# if offline:
-#     answer = all_data[~tr_index][['sid','city']].merge(answer,how='left',on='sid').fillna(0)
-#     answer['pred'] = np.argmax(test_pred,axis=1)
-#     print(f1_score(answer['click_mode'],answer['pred'],average='weighted'))
-#
-# for i in range(0,4):
-#     tmp = answer[answer['city']==i]
-#     print(i,f1_score(tmp['click_mode'],tmp['pred'],average='weighted'))
-#
-# num_classes = 12
-# label_name = 'click_mode'
-# oof_train.rename(columns={num_classes:label_name,'0':0,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'11':11},inplace=True)
-# oof_test.rename(columns={num_classes:label_name,'0':0,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'11':11},inplace=True)
-#
-# tmp_train = oof_train[oof_train.index.isin(space_time[space_time['req_time']>='2018-11-15']['sid'].unique())]
-# sz_train = tmp_train[tmp_train.index.isin(space_time[space_time['city']==2]['sid'].unique())]
-# other_train = tmp_train.copy()#[tmp_train.index.isin(space_time[space_time['city']!=2]['sid'].unique())]
-# raw_train_score = f1_score(tmp_train[label_name],np.argmax(tmp_train[range(num_classes)].values,axis=1),average='weighted')
-# #raw_valid_score = f1_score(valid[label_name],np.argmax(valid[range(num_classes)].values,axis=1),average='weighted')
-#
-# print("RAW SCORE: ",raw_train_score)#raw_valid_score
-#
-# class OptimizedRounder(object):
-#     def __init__(self):
-#         self.coef_ = 0
-#         self.coef_arr = []
-#         self.val_score = []
-#
-#     def _kappa_loss(self, coef, X, y):
-#         X_p = DF(np.copy(X))
-#         for i in range(len(coef)):
-#             X_p[i] *= coef[i]
-#
-#         l1 = f1_score(y, np.argmax(X_p.values,axis=1), average="weighted")
-#         self.coef_arr.append(coef)
-#
-#         print(list(coef.astype(np.float16)),' Train score = ',l1.astype(np.float32))#,' Valid score =',l2.astype(np.float16))
-#         return -l1
-#
-#     def fit(self, X, y):
-#         loss_partial = partial(self._kappa_loss, X=X, y=y)
-#         self.coef_ = sp.optimize.minimize(loss_partial, initial_coef, method='Powell')
-#
-#     def predict(self, X, coef):
-#         X_p = DF(np.copy(X))
-#         for i in range(len(coef)):
-#             X_p[i] *= coef[i]
-#         return X_p
-#
-#     def coefficients(self):
-#         return self.coef_['x']
-#
-# # 下面是一起处理的
-# # cv_pred = tmp_train[range(num_classes)].values
-# # y = tmp_train[label_name].values
-# # initial_coef = [1.0000] * num_classes
-#
-# # optR = OptimizedRounder()
-# # optR.fit(cv_pred, y)
-# # best_score = optR.coefficients()
-#
-# # best_coef = optR.coefficients()
-# # print(best_coef)#,best_score
-#
-# # SZ
-#
-# cv_pred = sz_train[range(num_classes)].values
-# y = sz_train[label_name].values
-# initial_coef = [1.1] * num_classes
-#
-# optR = OptimizedRounder()
-# optR.fit(cv_pred, y)
-# sz_score = optR.coefficients()
-#
-# # Other
-#
-# cv_pred = other_train[range(num_classes)].values
-# y = other_train[label_name].values
-# initial_coef = [1.1] * num_classes
-#
-# optR = OptimizedRounder()
-# optR.fit(cv_pred, y)
-# other_score = optR.coefficients()
-#
-# sz_test = oof_test[oof_test.index.isin(space_time[space_time['city']==2]['sid'].unique())]
-# other_test = oof_test[oof_test.index.isin(space_time[space_time['city']!=2]['sid'].unique())]
-# print(sz_test.shape,other_test.shape)
-#
-# sz_y = list(sz_train[label_name].values)
-# other_y = list(other_train[label_name].values)
-# y = sz_y + other_y
-#
-# sz_train = optR.predict(sz_train[range(num_classes)].values,sz_score)
-# other_train = optR.predict(other_train[range(num_classes)].values,other_score)
-# cv_pred = sz_train.append(other_train)
-#
-# print("Global Best")
-# print(best_coef)
-# print("\nValid Counts = ", Counter(y))
-# print("Predicted Counts = ", Counter(np.argmax(cv_pred.values,axis=1)))
-# acc1 = raw_train_score
-# acc2 = f1_score(y,np.argmax(cv_pred.values,axis=1),average="weighted")
-# print("Train Before = ",acc1)
-# print("Train After = ",acc2)
-# print("Train GAP = ",acc2-acc1)
-#
-# test_pred = optR.predict(oof_test[range(num_classes)], best_coef)
-# test_pred = np.argmax(test_pred.values,axis=1)
-#
-# # 后处理后
-#
-# if version == 2:
-#     train_clicks_2 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version),parse_dates=['click_time'],nrows=nrows)
-#     train_clicks_1 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version-1),parse_dates=['click_time'],nrows=nrows)
-#     answer = train_clicks_2.append(train_clicks_1).reset_index(drop=True).fillna(0)
-# else:
-#     answer = pd.read_csv(input_dir+'train_clicks.csv',parse_dates=['click_time'],nrows=nrows)
-#
-# if offline:
-#     answer = all_data[~tr_index][['sid','city']].merge(answer,how='left',on='sid').fillna(0)
-#     answer['pred'] = test_pred
-#     print(f1_score(answer['click_mode'],answer['pred'],average='weighted'))
-#
-# for i in range(0,4):
-#     tmp = answer[answer['city']==i]
-#     print(i,f1_score(tmp['click_mode'],tmp['pred'],average='weighted'))
-#
-# ALL
+    fire.Fire()
