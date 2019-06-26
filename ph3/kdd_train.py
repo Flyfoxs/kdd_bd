@@ -7,6 +7,71 @@ def train():
     pass
 
 
+import sys
+
+sys.path.append('./')
+from ph3.kdd_phase3_refactor import *
+
+
+def train():
+    pass
+
+
+class OptimizedRounder(object):
+    def __init__(self):
+        self.coef_ = 0
+        self.coef_arr = []
+        self.best_score = 0
+        self.initial_score = 0
+        self.val_score = []
+        self.initial_coef = [1.0000] * 12
+
+    def _kappa_loss(self, coef, X, y):
+        X_p = DF(np.copy(X))
+        for i in range(len(coef)):
+            X_p[i] *= coef[i]
+
+        l1 = f1_score(y, np.argmax(X_p.values, axis=1), average="weighted")
+        self.coef_arr.append(coef)
+        self.best_score = max(l1, self.best_score)
+        print(list(coef.astype(np.float16)), ' Train score = ', l1.astype(np.float32), 'Best Score',
+              self.best_score)  # ,' Valid score =',l2.astype(np.float16))
+        return -l1
+
+    def fit(self, X, y):
+        self.initial_score = f1_score(y, np.argmax(X.values, axis=1), average="weighted")
+
+        loss_partial = partial(self._kappa_loss, X=X, y=y)
+        self.coef_ = sp.optimize.minimize(loss_partial, self.initial_coef, method='Powell')
+
+    def predict(self, X):
+        coef = self.coef_['x']
+        print(self.coef_)
+        X_p = DF(np.copy(X))
+        for i in range(len(coef)):
+            X_p[i] *= coef[i]
+        return X_p
+
+    def coefficients(self):
+        return self.coef_['x']
+
+
+@timed()
+def gen_sub(oof_file):
+    opt = OptimizedRounder()
+    train = pd.read_hdf(oof_file, 'train')
+    test = pd.read_hdf(oof_file, 'test')
+    opt.fit(train.iloc[:, :12], train.iloc[:, 12].astype(int))
+
+    test_pred = opt.predict(test.iloc[:, :12])
+    test_pred = np.argmax(test_pred.values, axis=1)
+    test_pred = pd.DataFrame(test_pred, columns='recommend_mode', index=test.index)
+    test_pred.index.name = 'sid'
+    sub_file = f'./output/sub/n_{opt.initial_score:6.5f}_{opt.best_score:6.5f}.csv'
+    test_pred.to_csv(sub_file)
+    logger.debug(f'Sub file save to:{sub_file}')
+
+
 @timed()
 def train_base(feature_cnt=9999):
     import sys
@@ -47,7 +112,7 @@ def train_base(feature_cnt=9999):
             y_test = lgb_model.predict(X_test[feature_name])
             y_val = lgb_model.predict_proba(test_x[feature_name])
             cur_score = get_f1_score(test_y, y_val)
-            logger.info(f'End Train#{index}, cur_score:<<{cur_score:6.5}>>, best_iter:{lgb_model.best_iteration_}')
+            logger.info(f'End Train#{index}, cur_score:<<{cur_score:6.5f}>>, best_iter:{lgb_model.best_iteration_}')
             cv_score.append(cur_score)
             print(Counter(np.argmax(y_val, axis=1)))
 
@@ -55,17 +120,6 @@ def train_base(feature_cnt=9999):
                 final_pred = np.array(y_test).reshape(-1, 1)
             else:
                 final_pred = np.hstack((final_pred, np.array(y_test).reshape(-1, 1)))
-    # fi = []
-    # for i in cv_model:
-    #     tmp = {
-    #         'name': feature_name,
-    #         'score': i.feature_importances_
-    #     }
-    #     fi.append(pd.DataFrame(tmp))
-    #
-    # fi = pd.concat(fi)
-    #
-    # fi.groupby(['name'])['score'].agg('mean').sort_values(ascending=False).head(30).plot.barh()
 
     cv_pred = np.zeros((X_train.shape[0], 12))
     test_pred = np.zeros((X_test.shape[0], 12))
@@ -100,7 +154,11 @@ def train_base(feature_cnt=9999):
 
     logger.info(f'Avg score:{avg_score}, OOF save to :{oof_file}')
 
+    gen_sub(oof_file)
+
     return oof_file
+
+
 
 #
 # def lgb_f1_score_avg(y_hat, data, average):
@@ -183,8 +241,8 @@ def adjust_after(oof_file):
 if __name__ == '__main__':
     """
     运行方式:
-    nohup python ph3/kdd_train.py train_base 50 &
-    nohup python ph3/kdd_train.py train_base > train.log 2>&1  &
+    nohup python -u ph3/kdd_train.py train_base 50 &
+    nohup python -u ph3/kdd_train.py train_base > train_26.log 2>&1  &
 
     快速测试代码逻辑错: 
     get_queries,里面的采样比例即可

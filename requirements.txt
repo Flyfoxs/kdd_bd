@@ -10,6 +10,7 @@ matplotlib
 deprecated
 tables
 nltk
+feature_selector
 
 # yum install gcc-c++
 

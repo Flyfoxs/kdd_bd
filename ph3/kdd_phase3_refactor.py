@@ -1112,7 +1112,7 @@ def get_feature_all():
     添加新的测试特征, 在此处merge
     :return:
     """
-    return get_feature_all()
+    return get_feature_stable()
 
 @timed()
 @file_cache()
