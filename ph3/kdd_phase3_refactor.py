@@ -1,5 +1,6 @@
 #!/apps/dslab/anaconda/python3/bin/python
-
+import sys
+sys.path.append('./')
 import json
 import time
 import warnings
@@ -757,6 +758,8 @@ def get_feature_from_plans():
     plans_feature = plans_feature.sort_values(by=['sid']).reset_index(drop=True)
     return plans_feature
 
+
+#9mins
 @timed()
 @file_cache()
 def get_feature_space_time():
@@ -841,6 +844,8 @@ def get_feature_space_time():
 
 
 @deprecated(reason='Base on the sugg from snake')
+@timed()
+@lru_cache()
 def get_feature_odh():
     space_time = get_feature_space_time()
     n2v = True
@@ -1135,11 +1140,15 @@ def get_feature_all():
 
 
 def gen_feature():
-    odh = get_feature_odh()
+
     to_build      = get_feature_build()
     space_time    = get_feature_space_time()
     od_svd_vec = get_feature_od_svd_vec()
+    odh = get_feature_odh()
 
 
 if __name__ == '__main__':
     fire.Fire()
+    """
+    nohup python -u ph3/kdd_phase3_refactor.py gen_feature &
+    """

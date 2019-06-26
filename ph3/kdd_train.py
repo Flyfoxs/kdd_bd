@@ -1,5 +1,8 @@
-import ph3.kdd_phase3_refactor
+
+import sys
+sys.path.append('./')
 from ph3.kdd_phase3_refactor import *
+
 
 def train():
     pass
@@ -7,8 +10,9 @@ def train():
 
 @timed()
 def train_base(feature_cnt=9999):
-
-    all_data = get_feature_all().sample(frac=0.5)
+    import sys
+    print(sys.path)
+    all_data = get_feature_all()#.sample(frac=0.2)
     # Define F1 Train
     feature_name = get_feature_name(all_data)[:feature_cnt]
     logger.debug(f'Final Train feature#{len(feature_name)}: {list(feature_name)}')
@@ -42,6 +46,8 @@ def train_base(feature_cnt=9999):
         cv_model.append(lgb_model)
         y_test = lgb_model.predict(X_test[feature_name])
         y_val = lgb_model.predict_proba(test_x[feature_name])
+        logger.info(f'End Train#{index}, best_iter:{lgb_model.best_iteration_}')
+
         print(Counter(np.argmax(y_val, axis=1)))
     # fi = []
     # for i in cv_model:
@@ -81,8 +87,11 @@ def train_base(feature_cnt=9999):
     oof_test[12] = np.nan
     oof_test.set_index('sid', inplace=True)
 
-    oof_train.to_hdf("../output/stacking/oof_{}_fold_{}_feature_phase2.hdf".format(cv, len(feature_name)), 'train')
-    oof_test.to_hdf("../output/stacking/oof_{}_fold_{}_feature_phase2.hdf".format(cv, len(feature_name)), 'test')
+    oof_file = "./output/stacking/oof_{}_fold_{}_feature_phase2.hdf".format(cv, len(feature_name))
+    oof_train.to_hdf(oof_file, 'train')
+    oof_test.to_hdf(oof_file, 'test')
+
+    logger.info(f'OOF save to :{oof_file}')
 
     return np.mean(cv_score)
 
@@ -167,7 +176,8 @@ def adjust_after(oof_file):
 if __name__ == '__main__':
     """
     运行方式:
-    nohup python ph3.kdd_train.py train_base 100 &
+    nohup python ph3/kdd_train.py train_base 50 &
+    nohup python ph3/kdd_train.py train_base > train.log 2>&1  &
 
     快速测试代码逻辑错: 
     get_queries,里面的采样比例即可
