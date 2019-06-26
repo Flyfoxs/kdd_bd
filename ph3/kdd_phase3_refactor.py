@@ -1106,10 +1106,18 @@ def get_feature_name(df):
     feature_name = [i for i in df.columns if i not in ['sid','click_mode','plan_time','req_time','label', 'type_']]
     return feature_name
 
+
+def get_feature_all():
+    """
+    添加新的测试特征, 在此处merge
+    :return:
+    """
+    return get_feature_all()
+
 @timed()
 @file_cache()
 @reduce_mem()
-def get_feature_all():
+def get_feature_stable():
     # get_plans_data.cache_clear()
     # get_plans.cache_clear()
     # get_plan_df.cache_clear()
