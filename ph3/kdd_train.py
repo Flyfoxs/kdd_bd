@@ -14,7 +14,7 @@ def train_base(feature_cnt=9999):
     all_data = get_feature_all()#.sample(frac=0.2)
     # Define F1 Train
     feature_name = get_feature_name(all_data)[:feature_cnt]
-    logger.debug(f'Final Train feature#{len(feature_name)}: {list(feature_name)}')
+    logger.debug(f'Final Train feature#{len(feature_name)}: {sorted(feature_name)}')
     # CV TRAIN
 
     tr_index = ~all_data['click_mode'].isnull()
@@ -27,33 +27,34 @@ def train_base(feature_cnt=9999):
     cv_model = []
     skf = StratifiedKFold(n_splits=5, random_state=2019, shuffle=True)
     for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
-        gc.collect()
-        # with timed_bolck(f'Folder#{index}, feature:{len(feature_name)}'):
-        lgb_model = lgb.LGBMClassifier(
-            boosting_type="gbdt", num_leaves=128, reg_alpha=0.1, reg_lambda=10,
-            max_depth=-1, n_estimators=30, objective='multiclass', num_classes=12,
-            subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
-            learning_rate=0.1, random_state=2019 + index, n_jobs=10, metric="None", importance_type='gain'
-        )
-        train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[
-            test_index], y.iloc[train_index], y.iloc[test_index]
-        eval_set = [(test_x[feature_name], test_y)]
-        logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
-        lgb_model.fit(train_x[feature_name], train_y, eval_set=eval_set, verbose=10, early_stopping_rounds=30,
-                      eval_metric=f1_macro)
+        with timed_bolck(f'Begin Train#{index},feature:{len(feature_name)}'):
+            gc.collect()
+            # with timed_bolck(f'Folder#{index}, feature:{len(feature_name)}'):
+            lgb_model = lgb.LGBMClassifier(
+                boosting_type="gbdt", num_leaves=128, reg_alpha=0.1, reg_lambda=10,
+                max_depth=-1, n_estimators=3000, objective='multiclass', num_classes=12,
+                subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
+                learning_rate=0.1, random_state=2019 + index, n_jobs=6, metric="None", importance_type='gain'
+            )
+            train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[
+                test_index], y.iloc[train_index], y.iloc[test_index]
+            eval_set = [(test_x[feature_name], test_y)]
+            logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
+            lgb_model.fit(train_x[feature_name], train_y, eval_set=eval_set, verbose=10, early_stopping_rounds=30,
+                          eval_metric=f1_macro)
 
-        cv_model.append(lgb_model)
-        y_test = lgb_model.predict(X_test[feature_name])
-        y_val = lgb_model.predict_proba(test_x[feature_name])
-        cur_score = get_f1_score(test_y, y_val)
-        logger.info(f'End Train#{index}, best_iter:{lgb_model.best_iteration_}')
-        cv_score.append(cur_score)
-        print(Counter(np.argmax(y_val, axis=1)))
+            cv_model.append(lgb_model)
+            y_test = lgb_model.predict(X_test[feature_name])
+            y_val = lgb_model.predict_proba(test_x[feature_name])
+            cur_score = get_f1_score(test_y, y_val)
+            logger.info(f'End Train#{index}, cur_score:<<{cur_score:6.5}>>, best_iter:{lgb_model.best_iteration_}')
+            cv_score.append(cur_score)
+            print(Counter(np.argmax(y_val, axis=1)))
 
-        if index == 0:
-            final_pred = np.array(y_test).reshape(-1, 1)
-        else:
-            final_pred = np.hstack((final_pred, np.array(y_test).reshape(-1, 1)))
+            if index == 0:
+                final_pred = np.array(y_test).reshape(-1, 1)
+            else:
+                final_pred = np.hstack((final_pred, np.array(y_test).reshape(-1, 1)))
     # fi = []
     # for i in cv_model:
     #     tmp = {
@@ -92,11 +93,12 @@ def train_base(feature_cnt=9999):
     oof_test[12] = np.nan
     oof_test.set_index('sid', inplace=True)
 
-    oof_file = "./output/stacking/oof_{}_fold_{}_feature_phase2.hdf".format(cv, len(feature_name))
+    avg_score = np.mean(cv_score)
+    oof_file = f"./output/stacking/oof_{cv}_fold_{len(feature_name)}_{avg_score}_feature_phase2.hdf"
     oof_train.to_hdf(oof_file, 'train')
     oof_test.to_hdf(oof_file, 'test')
 
-    logger.info(f'Avg score:{np.mean(cv_score)}, OOF save to :{oof_file}')
+    logger.info(f'Avg score:{avg_score}, OOF save to :{oof_file}')
 
     return oof_file
 

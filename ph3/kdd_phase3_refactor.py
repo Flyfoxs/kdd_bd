@@ -507,9 +507,11 @@ def get_profiles():
     profiles = pd.read_csv(input_dir + 'profiles.csv')
     return profiles
 
+#07 min+
 @timed()
 @lru_cache()
-@file_cache()
+#@file_cache(type='h5')
+#@reduce_mem()
 def get_plans():
 
     print("Deal With Plans...")
@@ -534,10 +536,11 @@ def get_plans():
     plans.loc[plans.type_=='test','click_mode'] = -1
     plans.click_mode = plans.click_mode.fillna(0)
 
-    for i in tqdm(['distance','price','eta','transport_mode']):
-        plans[i] = plans['plans'].apply(jsonLoads, key=i)
+    with timed_bolck('get_plans(Parser_json)'):
+        for i in tqdm(['distance','price','eta','transport_mode'], 'get_plans:Parser json format'):
+            plans[i] = plans['plans'].apply(jsonLoads, key=i)
 
-    with timed_bolck('plans_rank_att'):
+    with timed_bolck('get_plans(plans_rank_att)'):
         """transport_mode_rank"""
         plans['transport_mode_rank'] = plans['transport_mode'].apply(lambda x:np.arange(len(x)))
         plans['distance_rank'] = plans['distance'].apply(lambda x:np.argsort(x))
@@ -555,7 +558,7 @@ def get_plans():
         else:
             return list((x)) + ([0] * (padding_maxlen - len(x)))
 
-    with timed_bolck('plans_array_padding'):
+    with timed_bolck('get_plans_plans_array_padding'):
         plans['distance_rank_array'] = plans['distance_rank'].map(lambda x: get_padding(x, 1))
         plans['eta_rank_array'] = plans['eta_rank'].map(lambda x: get_padding(x, 1))
         plans['price_rank_array'] = plans['price_rank'].map(lambda x: get_padding(x, 1))
@@ -568,11 +571,15 @@ def get_plans():
 
 
     plans = plans.sort_values(by=['sid'])
+    gc.collect()
+    logger.info(f'The size of plan is:{plans.memory_usage().sum()/1024**2}M')
     return plans
 
 @timed()
-@lru_cache()
-def get_plan_df():
+#@lru_cache()
+@file_cache()
+@reduce_mem()
+def get_plan_deep():
     plans = get_plans()
 
     transport_mode_rank = flatten_data(plans, col = 'transport_mode_rank')
@@ -591,11 +598,13 @@ def get_plan_df():
     return plans_df
 
 @timed()
-@lru_cache()
+#@lru_cache()
+@file_cache()
+@reduce_mem()
 def get_plans_data():
     data = get_plans()
     data = data.loc[:,['sid','click_mode']]
-    plans_df = get_plan_df()
+    plans_df = get_plan_deep()
     queries = get_queries()
     data = data.merge(plans_df, on='sid',how='left')
     data = data.merge(queries, on='sid',how='left')
@@ -621,12 +630,13 @@ def get_plans_data():
 #####  特征工程部分 #####
 
 #Plan展开初级特征
+#14
 @timed()
 @file_cache()
+@reduce_mem()
 def get_feature_plan_wide():
     data = get_plans_data()
-    plans = get_plans()
-    feature = plans[['sid']].sort_values(by=['sid']).copy()
+    feature = get_plans()[['sid']].sort_values(by=['sid']).copy()
 
     # 处理百度的推荐模型
 
@@ -650,104 +660,109 @@ def get_feature_plan_wide():
                 break
     return feature
 
+#106.8 mins(bd)
 @timed()
 @file_cache()
+@reduce_mem()
 def get_feature_from_plans():
     plans = get_plans()
     plans_feature = plans[['sid']]
-    plans_feature['mode_array_count_sid'] = plans.groupby(['transport_mode_str'])['sid'].transform('count')
-    plans_feature['price_count_sid'] = plans.groupby(['price_str'])['sid'].transform('count')
-    plans_feature['eta_count_sid'] = plans.groupby(['eta_str'])['sid'].transform('count')
-    plans_feature['distance_count_sid'] = plans.groupby(['distance_str'])['sid'].transform('count')
-    plans_feature['mode_price_count'] = plans.groupby(['transport_mode_str','price_str'])['sid'].transform('count')
-    plans_feature['mode_eta_count'] = plans.groupby(['transport_mode_str','eta_str'])['sid'].transform('count')
-    plans_feature['mode_distance_count'] = plans.groupby(['transport_mode_str','distance_str'])['sid'].transform('count')
+    with timed_bolck('plan_feature_count'):
+        plans_feature['mode_array_count_sid'] = plans.groupby(['transport_mode_str'])['sid'].transform('count')
+        plans_feature['price_count_sid'] = plans.groupby(['price_str'])['sid'].transform('count')
+        plans_feature['eta_count_sid'] = plans.groupby(['eta_str'])['sid'].transform('count')
+        plans_feature['distance_count_sid'] = plans.groupby(['distance_str'])['sid'].transform('count')
+        plans_feature['mode_price_count'] = plans.groupby(['transport_mode_str','price_str'])['sid'].transform('count')
+        plans_feature['mode_eta_count'] = plans.groupby(['transport_mode_str','eta_str'])['sid'].transform('count')
+        plans_feature['mode_distance_count'] = plans.groupby(['transport_mode_str','distance_str'])['sid'].transform('count')
 
-    plans_feature['transport_mode_len'] = plans['transport_mode'].map(lambda x:len(x))
-    plans_feature['transport_mode_nunique'] = plans['transport_mode'].map(lambda x:len(set((x))))
-    plans_feature['price_nonan_mean'] = plans['price'].map(lambda x:np.mean(get_stat(x)))
-    # plans_feature['price_nonan_skew'] = plans['price'].map(lambda x:stats.skew(get_stat(x)))
-    # plans_feature['price_nonan_kurt'] = plans['price'].map(lambda x:stats.kurtosis(get_stat(x)))
-    plans_feature['price_nonan_std'] = plans['price'].map(lambda x:np.std(get_stat(x)))
-    plans_feature['price_nonan_max'] = plans['price'].map(lambda x:np.max(get_stat(x)))
-    plans_feature['price_nonan_min'] = plans['price'].map(lambda x:np.min(get_stat(x)))
-    plans_feature['price_nonan_sum'] = plans['price'].map(lambda x:np.sum(get_stat(x)))
+    with timed_bolck('plan_feature_len_min_others'):
+        plans_feature['transport_mode_len'] = plans['transport_mode'].map(lambda x:len(x))
+        plans_feature['transport_mode_nunique'] = plans['transport_mode'].map(lambda x:len(set((x))))
+        plans_feature['price_nonan_mean'] = plans['price'].map(lambda x:np.mean(get_stat(x)))
+        # plans_feature['price_nonan_skew'] = plans['price'].map(lambda x:stats.skew(get_stat(x)))
+        # plans_feature['price_nonan_kurt'] = plans['price'].map(lambda x:stats.kurtosis(get_stat(x)))
+        plans_feature['price_nonan_std'] = plans['price'].map(lambda x:np.std(get_stat(x)))
+        plans_feature['price_nonan_max'] = plans['price'].map(lambda x:np.max(get_stat(x)))
+        plans_feature['price_nonan_min'] = plans['price'].map(lambda x:np.min(get_stat(x)))
+        plans_feature['price_nonan_sum'] = plans['price'].map(lambda x:np.sum(get_stat(x)))
 
-    padding_maxlen = np.max(plans_feature['transport_mode_len'])
+        padding_maxlen = np.max(plans_feature['transport_mode_len'])
 
-    print('padding_maxlen=', padding_maxlen)
-
-
-    plans_feature['price_have_0_num'] = plans['price'].map(lambda x:len([i for i in x if i==0]))
-    plans_feature['price_have_0_ratio'] = plans_feature['price_have_0_num'] / plans_feature['transport_mode_len']
-    plans_feature['price_mean'] = plans['price'].map(lambda x:np.mean(x))
-    plans_feature['distance_mean'] = plans['distance'].map(lambda x:np.mean(x))
-    plans_feature['eta_mean'] = plans['eta'].map(lambda x:np.mean(x))
-
-    plans_feature['distance_min'] = plans['distance'].map(lambda x:np.min(x))
-    plans_feature['distance_max'] = plans['distance'].map(lambda x:np.max(x))
-    plans_feature['distance_std'] = plans['distance'].map(lambda x:np.std(x))
-    plans_feature['distance_sum'] = plans['distance'].map(lambda x:np.sum(x))
-    # plans_feature['distance_skew'] = plans['distance'].map(lambda x:stats.skew(x))
-    # plans_feature['distance_kurt'] = plans['distance'].map(lambda x:stats.kurtosis(x))
-
-    plans_feature['eta_min'] = plans['eta'].map(lambda x:np.min(x))
-    plans_feature['eta_max'] = plans['eta'].map(lambda x:np.max(x))
-    plans_feature['eta_std'] = plans['eta'].map(lambda x:np.std(x))
-    plans_feature['eta_sum'] = plans['eta'].map(lambda x:np.sum(x))
-    # plans_feature['eta_skew'] = plans['eta'].map(lambda x:stats.skew(x))
-    # plans_feature['eta_kurt'] = plans['eta'].map(lambda x:stats.kurtosis(x))
-
-    plans_feature['transport_mode_mode'] = plans['transport_mode'].map(lambda x:stats.mode(x))
-    plans_feature['transport_mode_mode_count'] = plans_feature['transport_mode_mode'].map(lambda x:x[1][0])
-    plans_feature['transport_mode_mode'] = plans_feature['transport_mode_mode'].map(lambda x:x[0][0])
-    plans_feature['transport_mode_transform_count'] = plans_feature.groupby(['transport_mode_mode','transport_mode_mode_count'])['sid'].transform('count')
+        print('padding_maxlen=', padding_maxlen)
 
 
+        plans_feature['price_have_0_num'] = plans['price'].map(lambda x:len([i for i in x if i==0]))
+        plans_feature['price_have_0_ratio'] = plans_feature['price_have_0_num'] / plans_feature['transport_mode_len']
+        plans_feature['price_mean'] = plans['price'].map(lambda x:np.mean(x))
+        plans_feature['distance_mean'] = plans['distance'].map(lambda x:np.mean(x))
+        plans_feature['eta_mean'] = plans['eta'].map(lambda x:np.mean(x))
 
-    print(plans.shape,plans.columns)
-    for now in ['distance','price','eta']:
-        emb1,emb2,emb3,emb4,emb5,emb6,emb7,emb8 = [],[],[],[],[],[],[],[]
-        for i in tqdm(plans[['{}_array'.format(now),'{}_rank_array'.format(now),'mode_rank_array','transport_mode_array']].values):
-            power1,power2 = [],[]
-            for j in range(len(i[1])):
-                power1.append(i[1][j]*3**(padding_maxlen-j-1))
-                power2.append(i[2][j]*3**(padding_maxlen-j-1))
-            emb1.append(np.dot(i[0],i[1]))
-            emb2.append(np.dot(i[0],i[2]))
-            emb3.append(np.dot(i[3],i[1]))
-            emb4.append(np.dot(i[3],i[2]))
-            emb5.append(np.dot(i[0],power1))
-            emb6.append(np.dot(i[0],power2))
-            emb7.append(np.dot(i[3],power1))
-            emb8.append(np.dot(i[3],power2))
+        plans_feature['distance_min'] = plans['distance'].map(lambda x:np.min(x))
+        plans_feature['distance_max'] = plans['distance'].map(lambda x:np.max(x))
+        plans_feature['distance_std'] = plans['distance'].map(lambda x:np.std(x))
+        plans_feature['distance_sum'] = plans['distance'].map(lambda x:np.sum(x))
+        # plans_feature['distance_skew'] = plans['distance'].map(lambda x:stats.skew(x))
+        # plans_feature['distance_kurt'] = plans['distance'].map(lambda x:stats.kurtosis(x))
 
-        plans_feature['{}_{}_itselfrank'.format(now,'dot')] = emb1
-        plans_feature['{}_{}_moderank'.format(now,'dot')] = emb2
-        plans_feature['{}_{}_his_mode'.format(now,'dot')] = emb3
+        plans_feature['eta_min'] = plans['eta'].map(lambda x:np.min(x))
+        plans_feature['eta_max'] = plans['eta'].map(lambda x:np.max(x))
+        plans_feature['eta_std'] = plans['eta'].map(lambda x:np.std(x))
+        plans_feature['eta_sum'] = plans['eta'].map(lambda x:np.sum(x))
+        # plans_feature['eta_skew'] = plans['eta'].map(lambda x:stats.skew(x))
+        # plans_feature['eta_kurt'] = plans['eta'].map(lambda x:stats.kurtosis(x))
 
-        plans_feature['{}_{}_itselfrank'.format(now,'dot_power')] = emb5
-        plans_feature['{}_{}_moderank'.format(now,'dot_power')] = emb6
-        plans_feature['{}_{}_his_mode'.format(now,'dot_power')] = emb7
+    with timed_bolck('plan_feature_mode_count'):
+        plans_feature['transport_mode_mode'] = plans['transport_mode'].map(lambda x:stats.mode(x))
+        plans_feature['transport_mode_mode_count'] = plans_feature['transport_mode_mode'].map(lambda x:x[1][0])
+        plans_feature['transport_mode_mode'] = plans_feature['transport_mode_mode'].map(lambda x:x[0][0])
+        plans_feature['transport_mode_transform_count'] = plans_feature.groupby(['transport_mode_mode','transport_mode_mode_count'])['sid'].transform('count')
 
-    plans_feature['transport_dot_rank'] = emb4
-    plans_feature['transport_dot_power_rank'] = emb8
+    with timed_bolck('plan_feature_dot_emb'):
+        print(plans.shape,plans.columns)
+        for now in ['distance','price','eta']:
+            emb1,emb2,emb3,emb4,emb5,emb6,emb7,emb8 = [],[],[],[],[],[],[],[]
+            for i in tqdm(plans[['{}_array'.format(now),'{}_rank_array'.format(now),'mode_rank_array','transport_mode_array']].values):
+                power1,power2 = [],[]
+                for j in range(len(i[1])):
+                    power1.append(i[1][j]*3**(padding_maxlen-j-1))
+                    power2.append(i[2][j]*3**(padding_maxlen-j-1))
+                emb1.append(np.dot(i[0],i[1]))
+                emb2.append(np.dot(i[0],i[2]))
+                emb3.append(np.dot(i[3],i[1]))
+                emb4.append(np.dot(i[3],i[2]))
+                emb5.append(np.dot(i[0],power1))
+                emb6.append(np.dot(i[0],power2))
+                emb7.append(np.dot(i[3],power1))
+                emb8.append(np.dot(i[3],power2))
 
-    distance_pair = [
-        ('eta_array','price_array'),
-        ('eta_array','distance_array'),
-        ('price_array','distance_array'),
-        ('eta_array','transport_mode_array'),
-        ('eta_array','mode_rank_array'),
-        ('price_array','transport_mode_array'),
-        ('price_array','mode_rank_array'),
-        ('distance_array','transport_mode_array'),
-        ('distance_array','mode_rank_array'),
-    ]
+            plans_feature['{}_{}_itselfrank'.format(now,'dot')] = emb1
+            plans_feature['{}_{}_moderank'.format(now,'dot')] = emb2
+            plans_feature['{}_{}_his_mode'.format(now,'dot')] = emb3
 
-    for i in tqdm(distance_pair):
-        plans_feature['{}_l2_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'euclidean'),plans[i[0]],plans[i[1]]))
-        plans_feature['{}_cos_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'cosine'),plans[i[0]],plans[i[1]]))
+            plans_feature['{}_{}_itselfrank'.format(now,'dot_power')] = emb5
+            plans_feature['{}_{}_moderank'.format(now,'dot_power')] = emb6
+            plans_feature['{}_{}_his_mode'.format(now,'dot_power')] = emb7
+
+        plans_feature['transport_dot_rank'] = emb4
+        plans_feature['transport_dot_power_rank'] = emb8
+
+    with timed_bolck('plan_feature_l2_cos_distance'):
+        distance_pair = [
+            ('eta_array','price_array'),
+            ('eta_array','distance_array'),
+            ('price_array','distance_array'),
+            ('eta_array','transport_mode_array'),
+            ('eta_array','mode_rank_array'),
+            ('price_array','transport_mode_array'),
+            ('price_array','mode_rank_array'),
+            ('distance_array','transport_mode_array'),
+            ('distance_array','mode_rank_array'),
+        ]
+
+        for i in tqdm(distance_pair):
+            plans_feature['{}_l2_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'euclidean'),plans[i[0]],plans[i[1]]))
+            plans_feature['{}_cos_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'cosine'),plans[i[0]],plans[i[1]]))
 
     #     'braycurtis', 'canberra', 'chebyshev', 'cityblock',
     #     'correlation', 'cosine', 'dice', 'euclidean', 'hamming',
@@ -759,13 +774,14 @@ def get_feature_from_plans():
     return plans_feature
 
 
-#9mins
+#26 mins
 @timed()
 @file_cache()
+@reduce_mem()
 def get_feature_space_time():
-    feature = get_feature_plan_wide()
+    feature = get_feature_plan_wide()[['sid']]
     queries = get_queries()
-    plans = get_plans()
+    plans = get_plans()[['sid','plan_time']]
     space_time = feature[['sid']].merge(queries,on=['sid'],how='left').merge(plans[['sid','plan_time']],on='sid',how='left')
     space_time['time_diff'] = ((space_time['req_time']-space_time['plan_time'])*1e-9).astype(int)
     space_time['req_time_dow'] = space_time['req_time'].dt.dayofweek
@@ -845,7 +861,8 @@ def get_feature_space_time():
 
 @deprecated(reason='Base on the sugg from snake')
 @timed()
-@lru_cache()
+@file_cache()
+@reduce_mem()
 def get_feature_odh():
     space_time = get_feature_space_time()
     n2v = True
@@ -916,6 +933,7 @@ def get_feature_odh():
 
 @timed()
 @file_cache()
+@reduce_mem()
 def get_feature_od_svd_vec():
     space_time = get_feature_space_time()
     train_clicks = get_train_clicks()
@@ -930,6 +948,7 @@ def get_feature_od_svd_vec():
 
 @timed()
 @file_cache()
+@reduce_mem()
 def get_feature_build() :
     feature = get_feature_plan_wide()
     r0 = ['Recommand_0_{}'.format(i) for i in ['eta','distance','price']]
@@ -1014,6 +1033,7 @@ def get_feature_build() :
 
     return to_build
 
+#59 min+
 @timed()
 @file_cache()
 def get_feature_txt():
@@ -1049,11 +1069,12 @@ def get_feature_txt():
 
 @timed()
 @file_cache()
+@reduce_mem()
 def get_feature_pid():
     profiles = get_profiles().copy()
     queries = get_queries()
     data = get_plans_data()
-    feature = get_feature_plan_wide()
+    feature = get_feature_plan_wide() #TODO change to get_plans()
     pid_stats = feature[['sid']].merge(queries[['sid','pid']],how='left',on='sid')
     pid_stats = pid_stats.merge(profiles,on='pid',how='left')
     print(pid_stats.shape)
@@ -1089,11 +1110,10 @@ def get_feature_name(df):
 @file_cache()
 @reduce_mem()
 def get_feature_all():
-    pid_stats     = get_feature_pid()
-    feature       = get_feature_plan_wide()
-    plans_feature = get_feature_from_plans()
-    text_feature  = get_feature_txt()
-    space_time = get_feature_space_time()
+    # get_plans_data.cache_clear()
+    # get_plans.cache_clear()
+    # get_plan_df.cache_clear()
+
 
     #Embedding model 耗时比较久
     # to_build      = get_feature_build()
@@ -1101,15 +1121,27 @@ def get_feature_all():
     #od_svd_vec = get_feature_od_svd_vec()
 
     with timed_bolck('concat_all'):
-        all_data = pd.concat([pid_stats,
-                              not_sid_col(feature),
-                              not_sid_col(plans_feature),
-                              not_sid_col(text_feature),
-                              not_sid_col(space_time),
-                              # not_sid_col(to_build),
-                              #not_sid_col(od_svd_vec),
+        pid_stats = get_feature_pid()
+        feature = get_feature_plan_wide()
+        all_data = pd.concat([pid_stats, not_sid_col(feature)],  axis = 1)
+        del pid_stats, feature
+        gc.collect()
 
-                             ],axis=1)
+        space_time = get_feature_space_time()
+        all_data = pd.concat([all_data, not_sid_col(space_time)],  axis = 1)
+        del space_time
+        gc.collect()
+
+        plans_feature = get_feature_from_plans()
+        all_data = pd.concat([all_data, not_sid_col(plans_feature)],  axis = 1)
+        del plans_feature
+        gc.collect()
+
+        text_feature = get_feature_txt()
+        all_data = pd.concat([all_data, not_sid_col(text_feature)],  axis = 1)
+        del text_feature
+        gc.collect()
+
 
     with timed_bolck(f'Fill_default_mode'):
         train_clicks = get_train_clicks()
@@ -1138,16 +1170,40 @@ def get_feature_all():
     return all_data
 
 
+@timed()
 def gen_feature():
-    space_time = get_feature_space_time()
-    to_build      = get_feature_build()
+    tmp = get_plans()
+    del tmp
+    gc.collect()
 
-    od_svd_vec = get_feature_od_svd_vec()
-    odh = get_feature_odh()
+    tmp = get_feature_space_time()
+    del tmp
+    gc.collect()
+
+    tmp = get_feature_plan_wide()
+    del tmp
+    gc.collect()
+
+    tmp = get_feature_pid()
+    del tmp
+    gc.collect()
+
+    tmp = get_feature_from_plans()
+    del tmp
+    gc.collect()
+
+    tmp = get_feature_txt()
+    del tmp
+    gc.collect()
+
+    # to_build      = get_feature_build()
+    # od_svd_vec = get_feature_od_svd_vec()
+    # odh = get_feature_odh()
+
 
 
 if __name__ == '__main__':
     fire.Fire()
     """
-    nohup python -u ph3/kdd_phase3_refactor.py gen_feature &
+    nohup python -u ph3/kdd_phase3_refactor.py gen_feature > feature.log &
     """
