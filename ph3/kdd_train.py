@@ -1,4 +1,3 @@
-
 import sys
 sys.path.append('./')
 from ph3.kdd_phase3_refactor import *
@@ -32,7 +31,7 @@ def train_base(feature_cnt=9999):
         # with timed_bolck(f'Folder#{index}, feature:{len(feature_name)}'):
         lgb_model = lgb.LGBMClassifier(
             boosting_type="gbdt", num_leaves=128, reg_alpha=0.1, reg_lambda=10,
-            max_depth=-1, n_estimators=3000, objective='multiclass', num_classes=12,
+            max_depth=-1, n_estimators=30, objective='multiclass', num_classes=12,
             subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
             learning_rate=0.1, random_state=2019 + index, n_jobs=10, metric="None", importance_type='gain'
         )
@@ -46,9 +45,15 @@ def train_base(feature_cnt=9999):
         cv_model.append(lgb_model)
         y_test = lgb_model.predict(X_test[feature_name])
         y_val = lgb_model.predict_proba(test_x[feature_name])
+        cur_score = get_f1_score(test_y, y_val)
         logger.info(f'End Train#{index}, best_iter:{lgb_model.best_iteration_}')
-
+        cv_score.append(cur_score)
         print(Counter(np.argmax(y_val, axis=1)))
+
+        if index == 0:
+            final_pred = np.array(y_test).reshape(-1, 1)
+        else:
+            final_pred = np.hstack((final_pred, np.array(y_test).reshape(-1, 1)))
     # fi = []
     # for i in cv_model:
     #     tmp = {
@@ -91,9 +96,9 @@ def train_base(feature_cnt=9999):
     oof_train.to_hdf(oof_file, 'train')
     oof_test.to_hdf(oof_file, 'test')
 
-    logger.info(f'OOF save to :{oof_file}')
+    logger.info(f'Avg score:{np.mean(cv_score)}, OOF save to :{oof_file}')
 
-    return np.mean(cv_score)
+    return oof_file
 
 #
 # def lgb_f1_score_avg(y_hat, data, average):

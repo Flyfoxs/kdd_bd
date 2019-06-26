@@ -1093,11 +1093,11 @@ def get_feature_all():
     feature       = get_feature_plan_wide()
     plans_feature = get_feature_from_plans()
     text_feature  = get_feature_txt()
-
+    space_time = get_feature_space_time()
 
     #Embedding model 耗时比较久
     # to_build      = get_feature_build()
-    #space_time    = get_feature_space_time()
+
     #od_svd_vec = get_feature_od_svd_vec()
 
     with timed_bolck('concat_all'):
@@ -1105,9 +1105,8 @@ def get_feature_all():
                               not_sid_col(feature),
                               not_sid_col(plans_feature),
                               not_sid_col(text_feature),
-
+                              not_sid_col(space_time),
                               # not_sid_col(to_build),
-                              # not_sid_col(space_time),
                               #not_sid_col(od_svd_vec),
 
                              ],axis=1)
@@ -1140,9 +1139,9 @@ def get_feature_all():
 
 
 def gen_feature():
-
+    space_time = get_feature_space_time()
     to_build      = get_feature_build()
-    space_time    = get_feature_space_time()
+
     od_svd_vec = get_feature_od_svd_vec()
     odh = get_feature_odh()
 
