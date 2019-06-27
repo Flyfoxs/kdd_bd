@@ -1216,6 +1216,13 @@ def gen_feature():
 
     p.join()
 
+    try:
+        logger.info(f'Cache info for get_plans:{get_plans.cache_info()}')
+        get_plans.cache_clear()
+    except AttributeError as e:
+        logger.info(f'No cache for fun#get_plans')
+
+
 
 
 if __name__ == '__main__':

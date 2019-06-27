@@ -71,13 +71,16 @@ def gen_sub(oof_file):
 
 @timed()
 def train_base(feature_cnt=9999):
+
+    all_data = get_feature_all()#.sample(frac=0.2)
+
     try:
         logger.info(f'Cache info for get_plans:{get_plans.cache_info()}')
         get_plans.cache_clear()
     except AttributeError as e:
         logger.info(f'No cache for fun#get_plans')
 
-    all_data = get_feature_all()#.sample(frac=0.2)
+
     # Define F1 Train
     feature_name = get_feature_name(all_data)[:feature_cnt]
     logger.info(f'Final Train feature#{len(feature_name)}: {sorted(feature_name)}')
@@ -244,7 +247,7 @@ if __name__ == '__main__':
     """
     运行方式:
     nohup python -u ph3/kdd_train.py train_base 50 &
-    nohup python -u ph3/kdd_train.py train > train_26.log 2>&1  &
+    nohup python -u ph3/kdd_train.py train > train_27.log 2>&1  &
 
     快速测试代码逻辑错: 
     get_queries,里面的采样比例即可
