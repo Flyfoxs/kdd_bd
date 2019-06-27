@@ -3,18 +3,11 @@ sys.path.append('./')
 from ph3.kdd_phase3_refactor import *
 
 
+@timed()
 def train():
-    pass
-
-
-import sys
-
-sys.path.append('./')
-from ph3.kdd_phase3_refactor import *
-
-
-def train():
-    pass
+    oof_file=train_base()
+    gc.collect()
+    gen_sub(oof_file)
 
 
 class OptimizedRounder(object):
@@ -24,7 +17,9 @@ class OptimizedRounder(object):
         self.best_score = 0
         self.initial_score = 0
         self.val_score = []
-        self.initial_coef = [1.0000] * 12
+        self.initial_coef = [1.17117383, 0.94684846, 0.69123502, 2.46440181, 3.24613048,
+       0.81681875, 1.8995724 , 0.82457647, 1.47187443, 0.84245455,
+       1.24738773, 0.98517357]
 
     def _kappa_loss(self, coef, X, y):
         X_p = DF(np.copy(X))
@@ -46,7 +41,7 @@ class OptimizedRounder(object):
 
     def predict(self, X):
         coef = self.coef_['x']
-        print(self.coef_)
+        #print(self.coef_)
         X_p = DF(np.copy(X))
         for i in range(len(coef)):
             X_p[i] *= coef[i]
@@ -65,34 +60,41 @@ def gen_sub(oof_file):
 
     test_pred = opt.predict(test.iloc[:, :12])
     test_pred = np.argmax(test_pred.values, axis=1)
-    test_pred = pd.DataFrame(test_pred, columns='recommend_mode', index=test.index)
+    test_pred = pd.DataFrame(test_pred, columns=['recommend_mode'], index=test.index)
     test_pred.index.name = 'sid'
     sub_file = f'./output/sub/n_{opt.initial_score:6.5f}_{opt.best_score:6.5f}.csv'
     test_pred.to_csv(sub_file)
-    logger.debug(f'Sub file save to:{sub_file}')
+    logger.info(f'Sub file save to:{sub_file}')
+    logger.info(f'Best coef is: {opt.coefficients()}')
+    return opt.coefficients()
 
 
 @timed()
 def train_base(feature_cnt=9999):
-    import sys
-    print(sys.path)
+    try:
+        logger.info(f'Cache info for get_plans:{get_plans.cache_info()}')
+        get_plans.cache_clear()
+    except AttributeError as e:
+        logger.info(f'No cache for fun#get_plans')
+
     all_data = get_feature_all()#.sample(frac=0.2)
     # Define F1 Train
     feature_name = get_feature_name(all_data)[:feature_cnt]
-    logger.debug(f'Final Train feature#{len(feature_name)}: {sorted(feature_name)}')
+    logger.info(f'Final Train feature#{len(feature_name)}: {sorted(feature_name)}')
     # CV TRAIN
 
     tr_index = ~all_data['click_mode'].isnull()
     X_train = all_data[tr_index][list(set(feature_name))].reset_index(drop=True)
     y = all_data[tr_index]['click_mode'].reset_index(drop=True)
     X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
+    del all_data
     print(X_train.shape, X_test.shape)
     final_pred = []
     cv_score = []
     cv_model = []
     skf = StratifiedKFold(n_splits=5, random_state=2019, shuffle=True)
     for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
-        with timed_bolck(f'Begin Train#{index},feature:{len(feature_name)}'):
+        with timed_bolck(f'CV Train#{index},feature:{len(feature_name)}'):
             gc.collect()
             # with timed_bolck(f'Folder#{index}, feature:{len(feature_name)}'):
             lgb_model = lgb.LGBMClassifier(
@@ -135,6 +137,7 @@ def train_base(feature_cnt=9999):
     #print(np.mean(cv_score))
 
     oof_train = DF(cv_pred)
+    all_data = get_feature_all()
     # oof_train.columns = ['label_'+str(i) for i in range(0,12)]
     oof_train['sid'] = all_data[all_data['click_mode'].notnull()]['sid'].values
     oof_train[12] = y
@@ -154,9 +157,9 @@ def train_base(feature_cnt=9999):
 
     logger.info(f'Avg score:{avg_score}, OOF save to :{oof_file}')
 
-    gen_sub(oof_file)
-
     return oof_file
+
+
 
 
 
@@ -235,14 +238,13 @@ def train_base(feature_cnt=9999):
 #                                 early_stopping_rounds=400)
 #
 
-def adjust_after(oof_file):
-    pass
+
 
 if __name__ == '__main__':
     """
     运行方式:
     nohup python -u ph3/kdd_train.py train_base 50 &
-    nohup python -u ph3/kdd_train.py train_base > train_26.log 2>&1  &
+    nohup python -u ph3/kdd_train.py train > train_26.log 2>&1  &
 
     快速测试代码逻辑错: 
     get_queries,里面的采样比例即可

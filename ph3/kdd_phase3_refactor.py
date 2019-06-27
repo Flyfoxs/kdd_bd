@@ -489,7 +489,7 @@ def get_queries():
     train_queries['type_'] = 'train'
     test_queries['type_'] = 'test'
 
-    #frac=0.5
+    #frac=0.1
     #queries = pd.concat([train_queries.sample(frac=frac), test_queries.sample(frac=1)], axis=0).reset_index(drop=True)
     queries = pd.concat([train_queries, test_queries], axis=0).reset_index(drop=True)
     return queries
@@ -1074,7 +1074,7 @@ def get_feature_pid():
     profiles = get_profiles().copy()
     queries = get_queries()
     data = get_plans_data()
-    feature = get_feature_plan_wide() #TODO change to get_plans()
+    feature = get_plans()[['sid']] #old version is get_feature_plan_wide()
     pid_stats = feature[['sid']].merge(queries[['sid','pid']],how='left',on='sid')
     pid_stats = pid_stats.merge(profiles,on='pid',how='left')
     print(pid_stats.shape)
@@ -1106,7 +1106,7 @@ def get_feature_name(df):
     feature_name = [i for i in df.columns if i not in ['sid','click_mode','plan_time','req_time','label', 'type_']]
     return feature_name
 
-
+@timed()
 def get_feature_all():
     """
     添加新的测试特征, 在此处merge
@@ -1127,6 +1127,9 @@ def get_feature_stable():
     # to_build      = get_feature_build()
 
     #od_svd_vec = get_feature_od_svd_vec()
+
+    #initial feauture group
+    gen_feature()
 
     with timed_bolck('concat_all'):
         pid_stats = get_feature_pid()
@@ -1184,29 +1187,34 @@ def gen_feature():
     del tmp
     gc.collect()
 
-    tmp = get_feature_space_time()
-    del tmp
-    gc.collect()
+    #106 mins in baidu
+    from multiprocessing import Process
+    p = Process(target=get_feature_from_plans )
+    p.start()
 
-    tmp = get_feature_plan_wide()
-    del tmp
-    gc.collect()
+    with timed_bolck('gen_feature(exclude_from_plans)'):
+        tmp = get_feature_space_time()
+        del tmp
+        gc.collect()
 
-    tmp = get_feature_pid()
-    del tmp
-    gc.collect()
+        tmp = get_feature_plan_wide()
+        del tmp
+        gc.collect()
 
-    tmp = get_feature_from_plans()
-    del tmp
-    gc.collect()
+        tmp = get_feature_pid()
+        del tmp
+        gc.collect()
 
-    tmp = get_feature_txt()
-    del tmp
-    gc.collect()
 
-    # to_build      = get_feature_build()
-    # od_svd_vec = get_feature_od_svd_vec()
-    # odh = get_feature_odh()
+        tmp = get_feature_txt()
+        del tmp
+        gc.collect()
+
+        # to_build      = get_feature_build()
+        # od_svd_vec = get_feature_od_svd_vec()
+        # odh = get_feature_odh()
+
+    p.join()
 
 
 
