@@ -508,7 +508,7 @@ def get_profiles():
     return profiles
 
 #07 min+
-@timed()
+
 @lru_cache()
 #@file_cache(type='h5')
 #@reduce_mem()
@@ -1183,9 +1183,10 @@ def get_feature_stable():
 
 @timed()
 def gen_feature():
-    tmp = get_plans()
-    del tmp
-    gc.collect()
+    with timed_bolck('FN#get_plans'):
+        tmp = get_plans()
+        del tmp
+        gc.collect()
 
     #106 mins in baidu
     from multiprocessing import Process
@@ -1217,10 +1218,10 @@ def gen_feature():
     p.join()
 
     try:
-        logger.info(f'Cache info for get_plans:{get_plans.cache_info()}')
+        logger.info(f'cache_clear:Cache info for get_plans:{get_plans.cache_info()}')
         get_plans.cache_clear()
     except AttributeError as e:
-        logger.info(f'No cache for fun#get_plans')
+        logger.info(f'cache_clear:No cache for fun#get_plans')
 
 
 

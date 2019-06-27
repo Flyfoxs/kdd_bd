@@ -75,10 +75,10 @@ def train_base(feature_cnt=9999):
     all_data = get_feature_all()#.sample(frac=0.2)
 
     try:
-        logger.info(f'Cache info for get_plans:{get_plans.cache_info()}')
+        logger.info(f'cache_clear:Cache info for get_plans:{get_plans.cache_info()}')
         get_plans.cache_clear()
     except AttributeError as e:
-        logger.info(f'No cache for fun#get_plans')
+        logger.info(f'cache_clear:No Cache for fun#get_plans')
 
 
     # Define F1 Train
@@ -140,7 +140,7 @@ def train_base(feature_cnt=9999):
     #print(np.mean(cv_score))
 
     oof_train = DF(cv_pred)
-    all_data = get_feature_all()
+    all_data = get_feature_all()[['sid', 'click_mode']]
     # oof_train.columns = ['label_'+str(i) for i in range(0,12)]
     oof_train['sid'] = all_data[all_data['click_mode'].notnull()]['sid'].values
     oof_train[12] = y
