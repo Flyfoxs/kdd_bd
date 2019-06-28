@@ -1,8 +1,9 @@
 import pandas as pd
 
-
+#/home/jovyan/mnt/felix/kdd_bd_new/cache/get_feature_all==.pickle
 def get_feature_all():
-    tmp = pd.read_pickle('/home/jovyan/mnt/felix/kdd_bd_new/cache/get_feature_all==.pickle')
+    tmp = pd.read_pickle('./cache/get_feature_all==.pickle')
+    print(tmp.shape)
     return tmp
 
 
@@ -28,17 +29,19 @@ def f1_macro(labels, preds):
 
 
 def train_base(feature_cnt=9999):
-    all_data = get_feature_all()  # .sample(frac=0.5)
+    all_data = get_feature_all().fillna(0)  # .sample(frac=0.5)
     # Define F1 Train
     feature_name = get_feature_name(all_data)[:feature_cnt]
     logger.debug(f'Final Train feature#{len(feature_name)}')
     # CV TRAIN
 
+    logger.info('Begin values')
     tr_index = ~all_data['click_mode'].isnull()
-    X_train = all_data[tr_index][list(set(feature_name))].reset_index(drop=True)
-    y = all_data[tr_index]['click_mode'].reset_index(drop=True)
-    X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
+    X_train = all_data[tr_index][list(set(feature_name))].reset_index(drop=True)#.values
+    y = all_data[tr_index]['click_mode'].reset_index(drop=True)#.values
+    X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)#.values
     print(X_train.shape, X_test.shape)
+    logger.info('End values')
     final_pred = []
     cv_score = []
     cv_model = []
@@ -52,13 +55,25 @@ def train_base(feature_cnt=9999):
             subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
             learning_rate=0.1, random_state=2019 + index, n_jobs=10, metric="None", importance_type='gain'
         )
-        train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[
-            test_index], y.iloc[train_index], y.iloc[test_index]
-        eval_set = [(test_x[feature_name], test_y)]
-        logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
-        lgb_model.fit(train_x[feature_name], train_y, eval_set=eval_set, verbose=10, early_stopping_rounds=30,
-                      eval_metric=f1_macro)
-        logger.info(f'End Train#{index}, best_iter:{lgb_model.best_iteration_}')
+        del all_data
+        gc.collect()
+
+        logger.info('Begin Split')
+        train_x, test_x, train_y, test_y = X_train.iloc[train_index], X_train.iloc[test_index], y.iloc[train_index], y.iloc[test_index]
+        eval_set = [(test_x, test_y)]
+
+
+        del X_train
+        del X_test
+        del y
+        gc.collect()
+
+        #logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
+        logger.info('Begin Fit, <<<crash point>>>')
+        lgb_model.fit(train_x, train_y, eval_set=eval_set, verbose=10,
+                      early_stopping_rounds=30, eval_metric=f1_macro )
+        logger.info('End Fit')
+        #logger.info(f'End Train#{index}, best_iter:{lgb_model.best_iteration_}')
 
 
 train_base()
