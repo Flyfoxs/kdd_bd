@@ -62,7 +62,7 @@ def gen_sub(oof_file):
     test_pred = np.argmax(test_pred.values, axis=1)
     test_pred = pd.DataFrame(test_pred, columns=['recommend_mode'], index=test.index)
     test_pred.index.name = 'sid'
-    sub_file = f'./output/sub/n_{opt.initial_score:6.5f}_{opt.best_score:6.5f}.csv'
+    sub_file = f'./result/n_{opt.initial_score:6.5f}_{opt.best_score:6.5f}.csv'
     test_pred.to_csv(sub_file)
     logger.info(f'Sub file save to:{sub_file}')
     logger.info(f'Best coef is: {opt.coefficients()}')
@@ -72,7 +72,7 @@ def gen_sub(oof_file):
 @timed()
 def train_base(feature_cnt=9999):
 
-    all_data = get_feature_all()#.sample(frac=0.2)
+    all_data = get_feature_all()#.fillna(0)
 
     try:
         logger.info(f'cache_clear:Cache info for get_plans:{get_plans.cache_info()}')
@@ -154,7 +154,7 @@ def train_base(feature_cnt=9999):
     oof_test.set_index('sid', inplace=True)
 
     avg_score = np.mean(cv_score)
-    oof_file = f"./output/stacking/oof_{cv}_fold_{len(feature_name)}_{avg_score}_feature_phase2.hdf"
+    oof_file = f"./output/stacking/oof_{cv}_fold_{test_x.shape[1]}_{avg_score}_feature_phase2.hdf"
     oof_train.to_hdf(oof_file, 'train')
     oof_test.to_hdf(oof_file, 'test')
 
@@ -247,7 +247,7 @@ if __name__ == '__main__':
     """
     运行方式:
     nohup python -u ph3/kdd_train.py train_base 50 &
-    nohup python -u ph3/kdd_train.py train > train_27.log 2>&1  &
+    nohup python -u ph3/kdd_train.py train > train_28.log 2>&1  &
 
     快速测试代码逻辑错: 
     get_queries,里面的采样比例即可

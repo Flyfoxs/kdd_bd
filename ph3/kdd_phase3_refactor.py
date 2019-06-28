@@ -442,7 +442,7 @@ if for_test:
 else:
     nrows = 1000
 
-input_dir = './input/data_set_phase{}/'.format(version)
+input_dir = './data/'
 
 t1 = time.time()
 print("Now Input Data.....")
@@ -489,10 +489,10 @@ def get_queries():
     train_queries['type_'] = 'train'
     test_queries['type_'] = 'test'
 
-    #frac=0.1
-    #queries = pd.concat([train_queries.sample(frac=frac), test_queries.sample(frac=1)], axis=0).reset_index(drop=True)
-    queries = pd.concat([train_queries, test_queries], axis=0).reset_index(drop=True)
-    return queries
+    frac=1
+    queries = pd.concat([train_queries.sample(frac=frac), test_queries.sample(frac=1)], axis=0).reset_index(drop=True)
+    #queries = pd.concat([train_queries, test_queries], axis=0).reset_index(drop=True)
+    return queries.sort_values('sid')
 
 @timed()
 def get_train_clicks():
@@ -510,6 +510,7 @@ def get_profiles():
 #07 min+
 
 @lru_cache()
+@timed()
 #@file_cache(type='h5')
 #@reduce_mem()
 def get_plans():
@@ -1230,4 +1231,6 @@ if __name__ == '__main__':
     fire.Fire()
     """
     nohup python -u ph3/kdd_phase3_refactor.py gen_feature > feature.log &
+    
+    nohup python -u ph3/kdd_phase3_refactor.py get_feature_all > feature.log &
     """
