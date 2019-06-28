@@ -267,7 +267,7 @@ def get_plan_nlp():
 
 
 @timed()
-@file_cache()
+@file_cache(prefix='felix')
 @reduce_mem()
 def get_plans():
     """
@@ -703,7 +703,7 @@ def get_train_test():
 
 @timed()
 # @lru_cache()
-@file_cache()
+@file_cache(prefix='felix')
 @reduce_mem()
 def get_feature_core():
     query = get_query()
@@ -799,7 +799,7 @@ def get_direction():
 
 @timed()
 # @lru_cache()
-@file_cache()
+@file_cache(prefix='felix')
 @reduce_mem()
 def get_feature():
 
@@ -1209,7 +1209,7 @@ def get_plan_analysis_deep():
 if __name__ == '__main__':
     get_query()
     get_direction()
-    # get_feature_core()
+    get_feature()
     # get_triple_gp()
     # get_o_d_pid()
     #

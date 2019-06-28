@@ -10,7 +10,7 @@ class manual_split:
 
     @staticmethod
     def split_sk(X_data, n_splits=5):
-        feature =  get_query().copy()
+        feature =  get_query()#.copy()
         feature = feature.loc[X_data.index.astype(int)]
 
         #feature = feature.dropna(how='any')

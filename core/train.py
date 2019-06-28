@@ -150,7 +150,7 @@ def train_lgb(train_data, orig_X_test, cv=False, args={}, drop_list=[]):
                 # 'nthread': -1,
                 # 'verbose':-1,
                 # 'num_leaves': 128,
-                # 'min_data_in_leaf': 90,
+                #### 'min_data_in_leaf': 90,
                 # 'feature_fraction':0.5,
                 # 'lambda_l1': 0.1,
                 # 'lambda_l2': 10,
