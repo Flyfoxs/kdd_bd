@@ -138,3 +138,6 @@ if __name__ == "__main__":
     result["predict"] = collector.predict()
     print(json.dumps(result))
 
+"""
+    nohup python -u metrics_collector.py >> metrics.log 2>&1 &
+"""

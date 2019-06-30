@@ -785,12 +785,14 @@ def get_feature_space_time():
     queries = get_queries()
     plans = get_plans()[['sid','plan_time']]
     space_time = feature[['sid']].merge(queries,on=['sid'],how='left').merge(plans[['sid','plan_time']],on='sid',how='left')
-    space_time['time_diff'] = ((space_time['req_time']-space_time['plan_time'])*1e-9).astype(int)
-    space_time['req_time_dow'] = space_time['req_time'].dt.dayofweek
-    space_time['req_time_woy'] = space_time['req_time'].dt.weekofyear
-    space_time['req_is_weekend'] = (space_time['req_time'].dt.weekday>=5).astype(int)
-    space_time['req_time_hour'] = space_time['req_time'].dt.hour+space_time['req_time'].dt.minute/60
-    space_time['req_time_hour_0'] = space_time['req_time'].dt.hour
+
+    with timed_bolck('Gen_time_feature'):
+        space_time['time_diff'] = ((space_time['req_time']-space_time['plan_time'])*1e-9).astype(int)
+        space_time['req_time_dow'] = space_time['req_time'].dt.dayofweek
+        space_time['req_time_woy'] = space_time['req_time'].dt.weekofyear
+        space_time['req_is_weekend'] = (space_time['req_time'].dt.weekday>=5).astype(int)
+        space_time['req_time_hour'] = space_time['req_time'].dt.hour+space_time['req_time'].dt.minute/60
+        space_time['req_time_hour_0'] = space_time['req_time'].dt.hour
 
     for i in tqdm(['o','d']):
         space_time[i+'x'] = space_time[i].apply(lambda x:float(x.split(',')[0]))
@@ -1129,9 +1131,9 @@ def get_feature_all():
     felix = only_number(felix)
     remove_list = ['sid','click_mode']
     remove_list.extend([col for col in felix.columns if col.startswith('cv_')])
+    remove_list.extend([col for col in felix.columns if col.startswith('felix_p') and len(col)<=9])
     felix = remove_col(felix,remove_list)
     felix = felix.add_prefix('felix_')
-
 
     logger.info((stable.shape, felix.shape))
     return pd.concat([stable, felix] , axis=1)
@@ -1151,7 +1153,7 @@ def get_feature_stable():
     #od_svd_vec = get_feature_od_svd_vec()
 
     #initial feauture group
-    gen_feature()
+
 
     with timed_bolck('concat_all'):
         pid_stats = get_feature_pid()
@@ -1178,8 +1180,9 @@ def get_feature_stable():
 
     with timed_bolck(f'Fill_default_mode'):
         train_clicks = get_train_clicks()
-        queries = get_queries()
         all_data = all_data.merge(train_clicks[['sid','click_mode']],how='left',on='sid')
+
+        queries = get_queries()
         train = queries.loc[queries.type_ == 'train']
         all_data.loc[(all_data.sid.isin(train.sid)) & pd.isna(all_data.click_mode), 'click_mode']=0
 
@@ -1209,8 +1212,11 @@ def gen_feature():
 
     with timed_bolck('Additional Feature'):
         from core.feature import get_feature
-        p_add = Process(target=get_feature)
-        p_add.start()
+        # p_add = Process(target=get_feature, name='get_feature')
+        # p_add.start()
+        tmp = get_feature()
+        del tmp
+        gc.collect()
 
 
     with timed_bolck('FN#get_plans'):
@@ -1220,7 +1226,7 @@ def gen_feature():
 
     #106 mins in baidu
 
-    p = Process(target=get_feature_from_plans )
+    p = Process(target=get_feature_from_plans, name='get_feature_from_plans' )
     p.start()
 
     with timed_bolck('gen_feature(exclude_from_plans)'):
@@ -1245,7 +1251,6 @@ def gen_feature():
         # od_svd_vec = get_feature_od_svd_vec()
         # odh = get_feature_odh()
 
-    p_add.join()
     p.join()
 
     try:

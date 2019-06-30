@@ -5,6 +5,12 @@ from ph3.kdd_phase3_refactor import *
 
 @timed()
 def train():
+    #Gen feature in a separator process to recycle memory before training
+    from multiprocessing import Process
+    p = Process(target=gen_feature, name='get_feature')
+    p.start()
+    p.join()
+
     oof_file=train_base()
     gc.collect()
     gen_sub(oof_file)
@@ -112,7 +118,7 @@ def train_base(feature_cnt=9999):
             train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[
                 test_index], y.iloc[train_index], y.iloc[test_index]
             eval_set = [(test_x[feature_name], test_y)]
-            del X_train
+            #del X_train
             del y
             gc.collect()
 

@@ -1,3 +1,8 @@
+import sys
+sys.path.append('./')
+
+print(sys.path)
+
 import json
 import warnings
 from functools import lru_cache
@@ -1207,8 +1212,8 @@ def get_plan_analysis_deep():
     return stat_9
 
 if __name__ == '__main__':
-    get_query()
-    get_direction()
+    # get_query()
+    # get_direction()
     get_feature()
     # get_triple_gp()
     # get_o_d_pid()

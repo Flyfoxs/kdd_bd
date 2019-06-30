@@ -10,6 +10,7 @@ tables
 nltk
 feature_selector
 bayesian-optimization
+procname
 
 # yum install gcc-c++
 

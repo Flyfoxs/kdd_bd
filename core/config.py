@@ -1,4 +1,4 @@
-input_folder = './input/data_set_phase2'
+input_folder = './data'
 
 disable_phase1 = False
 
