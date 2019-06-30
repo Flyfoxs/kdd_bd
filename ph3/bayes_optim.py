@@ -127,13 +127,13 @@ def lgbm_evaluate(**params):
 
 gbm_params = {
     'learning_rate': (0.03, 0.1),
-    'num_leaves': (30, 40),
+    'num_leaves': (128-36, 128+36),
     'lambda_l1': (0.01, 0.1),
     'lambda_l2': (5, 10),
     'feature_fraction': (0.5, 0.9),
     'bagging_fraction': (0.5, 0.9),
     'bagging_freq': (3, 5),
-    'subsample':(0.4, 0.6),
+    'subsample':(0.5, 0.7),
     'colsample_bytree':(0.4, 0.6),
     'reg_alpha':(0.01, 0.1),
     'reg_lambda':(5, 10),
@@ -148,8 +148,8 @@ all_data = all_data.loc[:,feature_name+['sid']]
 
 all_data = all_data.sample(n=2000,random_state=123,axis=0) #这里做采样，验证逻辑
 
-init_n = 10 #初始化迭代次数
-iter_n = 20 #bayes opt迭代次数
+init_n = 25 #初始化迭代次数
+iter_n = 125 #bayes opt迭代次数
 check_log()
 bo = BayesianOptimization(lgbm_evaluate, gbm_params)
 logger = JSONLogger(path="logs.json")

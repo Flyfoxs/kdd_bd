@@ -1204,13 +1204,21 @@ def get_feature_stable():
 
 @timed()
 def gen_feature():
+    from multiprocessing import Process
+
+    with timed_bolck('Additional Feature'):
+        from core.feature import get_feature
+        p_add = Process(target=get_feature)
+        p_add.start()
+
+
     with timed_bolck('FN#get_plans'):
         tmp = get_plans()
         del tmp
         gc.collect()
 
     #106 mins in baidu
-    from multiprocessing import Process
+
     p = Process(target=get_feature_from_plans )
     p.start()
 
@@ -1236,6 +1244,7 @@ def gen_feature():
         # od_svd_vec = get_feature_od_svd_vec()
         # odh = get_feature_odh()
 
+    p_add.join()
     p.join()
 
     try:
