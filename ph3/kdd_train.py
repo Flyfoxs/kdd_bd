@@ -97,6 +97,7 @@ def train_base(feature_cnt=9999):
     cv_model = []
     skf = StratifiedKFold(n_splits=5, random_state=2019, shuffle=True)
     for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
+
         with timed_bolck(f'CV Train#{index},feature:{len(feature_name)}'):
             gc.collect()
             # with timed_bolck(f'Folder#{index}, feature:{len(feature_name)}'):
@@ -106,14 +107,24 @@ def train_base(feature_cnt=9999):
                 subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
                 learning_rate=0.1, random_state=2019 + index, n_jobs=6, metric="None", importance_type='gain'
             )
+
+
             train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[
                 test_index], y.iloc[train_index], y.iloc[test_index]
             eval_set = [(test_x[feature_name], test_y)]
+            del X_train
+            del y
+            gc.collect()
+
+
             logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
-            lgb_model.fit(train_x[feature_name], train_y, eval_set=eval_set, verbose=10, early_stopping_rounds=30,
+            lgb_model.fit(train_x[feature_name].values, train_y.values, eval_set=eval_set, verbose=10, early_stopping_rounds=30,
                           eval_metric=f1_macro)
 
             cv_model.append(lgb_model)
+
+            lgb_model.booster_.save_model(f'./model/model_normal_{len(feature_name)}_{index}.txt')
+
             y_test = lgb_model.predict(X_test[feature_name])
             y_val = lgb_model.predict_proba(test_x[feature_name])
             cur_score = get_f1_score(test_y, y_val)
@@ -256,143 +267,3 @@ if __name__ == '__main__':
     fire.Fire()
 
 
-
-
-    #
-    # # Offline 后处理前
-    #
-    # if version == 2:
-    #     train_clicks_2 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version),parse_dates=['click_time'],nrows=nrows)
-    #     train_clicks_1 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version-1),parse_dates=['click_time'],nrows=nrows)
-    #     answer = train_clicks_2.append(train_clicks_1).reset_index(drop=True).fillna(0)
-    # else:
-    #     answer = pd.read_csv(input_dir+'train_clicks.csv',parse_dates=['click_time'],nrows=nrows)
-    #
-    # if offline:
-    #     answer = all_data[~tr_index][['sid','city']].merge(answer,how='left',on='sid').fillna(0)
-    #     answer['pred'] = np.argmax(test_pred,axis=1)
-    #     print(f1_score(answer['click_mode'],answer['pred'],average='weighted'))
-    #
-    # for i in range(0,4):
-    #     tmp = answer[answer['city']==i]
-    #     print(i,f1_score(tmp['click_mode'],tmp['pred'],average='weighted'))
-    #
-    # num_classes = 12
-    # label_name = 'click_mode'
-    # oof_train.rename(columns={num_classes:label_name,'0':0,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'11':11},inplace=True)
-    # oof_test.rename(columns={num_classes:label_name,'0':0,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'11':11},inplace=True)
-    #
-    # tmp_train = oof_train[oof_train.index.isin(space_time[space_time['req_time']>='2018-11-15']['sid'].unique())]
-    # sz_train = tmp_train[tmp_train.index.isin(space_time[space_time['city']==2]['sid'].unique())]
-    # other_train = tmp_train.copy()#[tmp_train.index.isin(space_time[space_time['city']!=2]['sid'].unique())]
-    # raw_train_score = f1_score(tmp_train[label_name],np.argmax(tmp_train[range(num_classes)].values,axis=1),average='weighted')
-    # #raw_valid_score = f1_score(valid[label_name],np.argmax(valid[range(num_classes)].values,axis=1),average='weighted')
-    #
-    # print("RAW SCORE: ",raw_train_score)#raw_valid_score
-    #
-    # class OptimizedRounder(object):
-    #     def __init__(self):
-    #         self.coef_ = 0
-    #         self.coef_arr = []
-    #         self.val_score = []
-    #
-    #     def _kappa_loss(self, coef, X, y):
-    #         X_p = DF(np.copy(X))
-    #         for i in range(len(coef)):
-    #             X_p[i] *= coef[i]
-    #
-    #         l1 = f1_score(y, np.argmax(X_p.values,axis=1), average="weighted")
-    #         self.coef_arr.append(coef)
-    #
-    #         print(list(coef.astype(np.float16)),' Train score = ',l1.astype(np.float32))#,' Valid score =',l2.astype(np.float16))
-    #         return -l1
-    #
-    #     def fit(self, X, y):
-    #         loss_partial = partial(self._kappa_loss, X=X, y=y)
-    #         self.coef_ = sp.optimize.minimize(loss_partial, initial_coef, method='Powell')
-    #
-    #     def predict(self, X, coef):
-    #         X_p = DF(np.copy(X))
-    #         for i in range(len(coef)):
-    #             X_p[i] *= coef[i]
-    #         return X_p
-    #
-    #     def coefficients(self):
-    #         return self.coef_['x']
-    #
-    # # 下面是一起处理的
-    # # cv_pred = tmp_train[range(num_classes)].values
-    # # y = tmp_train[label_name].values
-    # # initial_coef = [1.0000] * num_classes
-    #
-    # # optR = OptimizedRounder()
-    # # optR.fit(cv_pred, y)
-    # # best_score = optR.coefficients()
-    #
-    # # best_coef = optR.coefficients()
-    # # print(best_coef)#,best_score
-    #
-    # # SZ
-    #
-    # cv_pred = sz_train[range(num_classes)].values
-    # y = sz_train[label_name].values
-    # initial_coef = [1.1] * num_classes
-    #
-    # optR = OptimizedRounder()
-    # optR.fit(cv_pred, y)
-    # sz_score = optR.coefficients()
-    #
-    # # Other
-    #
-    # cv_pred = other_train[range(num_classes)].values
-    # y = other_train[label_name].values
-    # initial_coef = [1.1] * num_classes
-    #
-    # optR = OptimizedRounder()
-    # optR.fit(cv_pred, y)
-    # other_score = optR.coefficients()
-    #
-    # sz_test = oof_test[oof_test.index.isin(space_time[space_time['city']==2]['sid'].unique())]
-    # other_test = oof_test[oof_test.index.isin(space_time[space_time['city']!=2]['sid'].unique())]
-    # print(sz_test.shape,other_test.shape)
-    #
-    # sz_y = list(sz_train[label_name].values)
-    # other_y = list(other_train[label_name].values)
-    # y = sz_y + other_y
-    #
-    # sz_train = optR.predict(sz_train[range(num_classes)].values,sz_score)
-    # other_train = optR.predict(other_train[range(num_classes)].values,other_score)
-    # cv_pred = sz_train.append(other_train)
-    #
-    # print("Global Best")
-    # print(best_coef)
-    # print("\nValid Counts = ", Counter(y))
-    # print("Predicted Counts = ", Counter(np.argmax(cv_pred.values,axis=1)))
-    # acc1 = raw_train_score
-    # acc2 = f1_score(y,np.argmax(cv_pred.values,axis=1),average="weighted")
-    # print("Train Before = ",acc1)
-    # print("Train After = ",acc2)
-    # print("Train GAP = ",acc2-acc1)
-    #
-    # test_pred = optR.predict(oof_test[range(num_classes)], best_coef)
-    # test_pred = np.argmax(test_pred.values,axis=1)
-    #
-    # # 后处理后
-    #
-    # if version == 2:
-    #     train_clicks_2 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version),parse_dates=['click_time'],nrows=nrows)
-    #     train_clicks_1 = pd.read_csv(input_dir+'train_clicks_phase{}.csv'.format(version-1),parse_dates=['click_time'],nrows=nrows)
-    #     answer = train_clicks_2.append(train_clicks_1).reset_index(drop=True).fillna(0)
-    # else:
-    #     answer = pd.read_csv(input_dir+'train_clicks.csv',parse_dates=['click_time'],nrows=nrows)
-    #
-    # if offline:
-    #     answer = all_data[~tr_index][['sid','city']].merge(answer,how='left',on='sid').fillna(0)
-    #     answer['pred'] = test_pred
-    #     print(f1_score(answer['click_mode'],answer['pred'],average='weighted'))
-    #
-    # for i in range(0,4):
-    #     tmp = answer[answer['city']==i]
-    #     print(i,f1_score(tmp['click_mode'],tmp['pred'],average='weighted'))
-    #
-    # ALL

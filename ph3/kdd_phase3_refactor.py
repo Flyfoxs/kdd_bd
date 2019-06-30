@@ -1107,13 +1107,33 @@ def get_feature_name(df):
     feature_name = [i for i in df.columns if i not in ['sid','click_mode','plan_time','req_time','label', 'type_']]
     return feature_name
 
+def only_number(df):
+    for col in df.columns:
+        if df[col].dtype=='str' or df[col].dtype=='object':
+            logger.info(f'Remove the {col}#{df[col].dtype}')
+            del df[col]
+    return df
+
 @timed()
+@file_cache()
 def get_feature_all():
     """
     添加新的测试特征, 在此处merge
     :return:
     """
-    return get_feature_stable()
+    stable = get_feature_stable()
+
+    from core.feature import get_feature_core, get_feature, remove_col
+    felix = get_feature()
+    felix = only_number(felix)
+    remove_list = ['sid','click_mode']
+    remove_list.extend([col for col in felix.columns if col.startswith('cv_')])
+    felix = remove_col(felix,remove_list)
+    felix = felix.add_prefix('felix_')
+
+
+    logger.info((stable.shape, felix.shape))
+    return pd.concat([stable, felix] , axis=1)
 
 @timed()
 @file_cache()

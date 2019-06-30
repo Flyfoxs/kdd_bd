@@ -51,3 +51,11 @@ stacking
 city 重新排序
 或者city 向量化
 或者city category
+
+
+#TODO
+- Lossing feature
+- Add new feature
+- post process
+- rolling convert ratio
+- 

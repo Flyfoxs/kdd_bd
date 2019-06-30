@@ -1,18 +1,19 @@
 python-geohash
 file-cache
 tqdm
-file_cache
 lightgbm
 hyperopt
 xgboost
 fire
-matplotlib
 deprecated
 tables
 nltk
 feature_selector
+bayesian-optimization
 
 # yum install gcc-c++
 
 # pip install git+https://github.com/shenweichen/GraphEmbedding.git@master
 # pip install git+https://github.com/Flyfoxs/file_cache@master
+
+

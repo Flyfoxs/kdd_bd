@@ -58,6 +58,14 @@ def train_base(feature_cnt=9999):
         del all_data
         gc.collect()
 
+        # logger.info(X_train.dtypes.value_counts)
+        # with timed_bolck('Begin Convert float'):
+        #     for col in tqdm(X_train.columns):
+        #         gc.collect()
+        #         # if 'float' not in X_train.loc[:,col].dtype.name:
+        #         X_train.loc[:,col] = X_train.loc[:,col].astype(float)
+
+
         logger.info('Begin Split')
         train_x, test_x, train_y, test_y = X_train.iloc[train_index], X_train.iloc[test_index], y.iloc[train_index], y.iloc[test_index]
         eval_set = [(test_x, test_y)]
@@ -68,12 +76,22 @@ def train_base(feature_cnt=9999):
         del y
         gc.collect()
 
-        #logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
-        logger.info('Begin Fit, <<<crash point>>>')
+        # #logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
+        # logger.info('Begin Fit, <<<crash point>>>')
+        # gc.collect()
+        # train_x = train_x.values#.astype(float)
+        # gc.collect()
+        # train_y = train_y.values#.astype(float)
+        #
+        # #for i in train_x.shape[1]:
+
+        logger.info('Value convert, <<<crash point>>>')
         lgb_model.fit(train_x, train_y, eval_set=eval_set, verbose=10,
                       early_stopping_rounds=30, eval_metric=f1_macro )
-        logger.info('End Fit')
+        logger.info('End Fit, <<<crash point>>>')
         #logger.info(f'End Train#{index}, best_iter:{lgb_model.best_iteration_}')
 
 
-train_base()
+if __name__ == '__main__':
+    import fire
+    fire.Fire()
