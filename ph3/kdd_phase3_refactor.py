@@ -1212,11 +1212,9 @@ def gen_feature():
 
     with timed_bolck('Additional Feature'):
         from core.feature import get_feature
-        # p_add = Process(target=get_feature, name='get_feature')
-        # p_add.start()
-        tmp = get_feature()
-        del tmp
-        gc.collect()
+        p_add = Process(target=get_feature, name='get_feature')
+        p_add.start()
+        p_add.join()
 
 
     with timed_bolck('FN#get_plans'):
