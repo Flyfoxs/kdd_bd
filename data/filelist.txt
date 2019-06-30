@@ -1,0 +1,13 @@
+total 2573504
+-rw-r--r--@ 1 lali2   48449855 May 30 10:41 profiles.csv
+-rw-r--r--@ 1 lali2   20794175 May 30 10:42 test_queries.csv
+-rw-r--r--@ 1 lali2  115401836 May 30 10:43 test_plans.csv
+-rw-r--r--@ 1 lali2   33505327 May 30 10:45 train_queries_phase1.csv
+-rw-r--r--@ 1 lali2  192017228 May 30 10:45 train_plans_phase1.csv
+-rw-r--r--@ 1 lali2   15786990 May 30 10:45 train_clicks_phase1.csv
+-rw-r--r--@ 1 lali2  101848360 May 30 10:45 train_queries_phase2.csv
+-rw-r--r--@ 1 lali2  561040668 May 30 10:45 train_plans_phase2.csv
+-rw-r--r--@ 1 lali2   43599457 May 30 10:45 train_clicks_phase2.csv
+-rw-r--r--@ 1 lali2  185166211 May 31 13:11 data_set_phase2.zip
+
+
