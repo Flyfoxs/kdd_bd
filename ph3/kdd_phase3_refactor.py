@@ -149,6 +149,7 @@ def get_ktime_feature(k, data, i):  # 排名为I时的特征
     for time in range(1, k):
         tmp = kfc.sort_values(by=['sid', i]).drop_duplicates(subset=['sid'], keep='first')
         kfc = kfc[~kfc.index.isin(tmp.index)]
+    kfc.loc[:, i] = kfc.loc[:, i].fillna(0)
     tmp = kfc.sort_values(by=['sid', i]).drop_duplicates(subset=['sid'], keep='first')
     return tmp
 
