@@ -99,7 +99,7 @@ def lgbm_evaluate(**params):
         'colsample_bytree':params['colsample_bytree'],
         'subsample_freq':1,
         'max_depth':-1,
-        'nthread':20, #这里调整cpu核数
+        'nthread':6, #这里调整cpu核数
         'reg_alpha':params['reg_alpha'],
         'reg_lambda':int(params['reg_lambda']),
     }
@@ -124,32 +124,44 @@ def lgbm_evaluate(**params):
 
     return np.mean(scores)
 
+"""
+            lgb_model = lgb.LGBMClassifier(
+                boosting_type="gbdt", num_leaves=128, reg_alpha=0.1, reg_lambda=10,
+                max_depth=-1, n_estimators=3000, objective='multiclass', num_classes=12,
+                subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
+                learning_rate=0.1, random_state=2019 + index, n_jobs=6, metric="None", importance_type='gain'
+            )
+
+
+"""
 
 gbm_params = {
-    'learning_rate': (0.03, 0.1),
-    'num_leaves': (128-36, 128+36),
-    'lambda_l1': (0.01, 0.1),
-    'lambda_l2': (5, 10),
-    'feature_fraction': (0.5, 0.9),
-    'bagging_fraction': (0.5, 0.9),
-    'bagging_freq': (3, 5),
-    'subsample':(0.5, 0.7),
-    'colsample_bytree':(0.4, 0.6),
-    'reg_alpha':(0.01, 0.1),
-    'reg_lambda':(5, 10),
+    'learning_rate': (0.1, 0.1),
+    'num_leaves': (32, 128+36), ####
+    'lambda_l1': (0.1, 0.1),
+    'lambda_l2': (10, 10),
+    'feature_fraction': (0.5, 0.5),
+    'bagging_fraction': (0.5, 0.5),
+    'bagging_freq': (3, 3),
+    'subsample':(0.5, 0.7), #####
+    'colsample_bytree':(0.5, 0.5),
+    'reg_alpha':(0.1, 0.1),
+    'reg_lambda':(5, 5),
 }
 
-from ph3.kdd_phase3_refactor import get_feature_name
+from ph3.kdd_phase3_refactor import get_feature_all
 
-all_data = pd.read_pickle("./cache/get_feature_stable==.pickle")
 
-feature_name = get_feature_name(all_data)
+all_data = get_feature_all()
+
+feature_name = get_feature_all(all_data)
+
 all_data = all_data.loc[:,feature_name+['sid']]
 
 all_data = all_data.sample(n=2000,random_state=123,axis=0) #这里做采样，验证逻辑
 
-init_n = 25 #初始化迭代次数
-iter_n = 125 #bayes opt迭代次数
+init_n = 20 #初始化迭代次数
+iter_n = 200 #bayes opt迭代次数
 check_log()
 bo = BayesianOptimization(lgbm_evaluate, gbm_params)
 logger = JSONLogger(path="logs.json")
