@@ -80,6 +80,8 @@ def train_base(feature_cnt=9999):
 
     all_data = get_feature_all()#.fillna(0)
 
+    #all_data = reduce_dim(all_data)
+
     try:
         logger.info(f'cache_clear:Cache info for get_plans:{get_plans.cache_info()}')
         get_plans.cache_clear()
@@ -118,9 +120,6 @@ def train_base(feature_cnt=9999):
             train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[
                 test_index], y.iloc[train_index], y.iloc[test_index]
             eval_set = [(test_x[feature_name], test_y)]
-            #del X_train
-            del y
-            gc.collect()
 
 
             logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
@@ -157,7 +156,7 @@ def train_base(feature_cnt=9999):
     #print(np.mean(cv_score))
 
     oof_train = DF(cv_pred)
-    all_data = get_feature_all()[['sid', 'click_mode']]
+    all_data = get_feature_stable()[['sid', 'click_mode']]
     # oof_train.columns = ['label_'+str(i) for i in range(0,12)]
     oof_train['sid'] = all_data[all_data['click_mode'].notnull()]['sid'].values
     oof_train[12] = y

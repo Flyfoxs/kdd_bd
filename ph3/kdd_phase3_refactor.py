@@ -1131,12 +1131,15 @@ def get_feature_all():
     felix = only_number(felix)
     remove_list = ['sid','click_mode']
     remove_list.extend([col for col in felix.columns if col.startswith('cv_')])
-    remove_list.extend([col for col in felix.columns if col.startswith('felix_p') and len(col)<=9])
+    remove_list.extend([col for col in felix.columns if col.startswith('p') and len(col) <= 3])
     felix = remove_col(felix,remove_list)
     felix = felix.add_prefix('felix_')
 
+
     logger.info((stable.shape, felix.shape))
-    return pd.concat([stable, felix] , axis=1)
+    all =  pd.concat([stable, felix] , axis=1)
+    #all =  all.loc[:, remove_duplicates_col(all)]
+    return all
 
 @timed()
 @file_cache()
@@ -1259,6 +1262,14 @@ def gen_feature():
 
 
 
+@timed()
+def reduce_dim(df:pd.DataFrame):
+    #return df
+    analysis = df.dropna(how='any').describe()
+    analysis = analysis.T.drop_duplicates()
+    all = analysis.sort_index()
+    #all = all.loc[~(all['std']==0)]
+    return df.loc[:, list(all.index)]
 
 if __name__ == '__main__':
     fire.Fire()
@@ -1266,4 +1277,6 @@ if __name__ == '__main__':
     nohup python -u ph3/kdd_phase3_refactor.py gen_feature > feature.log &
     
     nohup python -u ph3/kdd_phase3_refactor.py get_feature_all > feature.log &
+    
+    nohup python -u ph3/kdd_phase3_refactor.py analysis > analysis.log &
     """
