@@ -28,6 +28,7 @@ def f1_macro(labels, preds):
 
 
 
+@timed()
 def train_base(feature_cnt=9999):
     all_data = get_feature_all().fillna(0)  # .sample(frac=0.5)
     # Define F1 Train
@@ -45,6 +46,7 @@ def train_base(feature_cnt=9999):
     final_pred = []
     cv_score = []
     cv_model = []
+    del all_data
     skf = StratifiedKFold(n_splits=5, random_state=2019, shuffle=True)
     for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
         gc.collect()
@@ -55,8 +57,7 @@ def train_base(feature_cnt=9999):
             subsample=0.5, colsample_bytree=0.5, subsample_freq=1,
             learning_rate=0.1, random_state=2019 + index, n_jobs=10, metric="None", importance_type='gain'
         )
-        del all_data
-        gc.collect()
+
 
         # logger.info(X_train.dtypes.value_counts)
         # with timed_bolck('Begin Convert float'):
@@ -69,24 +70,20 @@ def train_base(feature_cnt=9999):
         logger.info('Begin Split')
         train_x, test_x, train_y, test_y = X_train.iloc[train_index], X_train.iloc[test_index], y.iloc[train_index], y.iloc[test_index]
         eval_set = [(test_x, test_y)]
+        logger.info('End Split')
+        # logger.info(f'Begin Manually convert')
+        # for col in tqdm(train_x.columns):
+        #     train_x.loc[:, col] = train_x.loc[:, col].values.astype(np.float32)
 
+        # gc.collect()
+        # train_x =
+        # logger.info('Convert to values')
 
-        del X_train
-        del X_test
-        del y
         gc.collect()
-
-        # #logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
-        # logger.info('Begin Fit, <<<crash point>>>')
-        # gc.collect()
-        # train_x = train_x.values#.astype(float)
-        # gc.collect()
-        # train_y = train_y.values#.astype(float)
-        #
-        # #for i in train_x.shape[1]:
-
-        logger.info('Value convert, <<<crash point>>>')
-        lgb_model.fit(train_x, train_y, eval_set=eval_set, verbose=10,
+        #train_x = np.array(train_x.values.reshape(train_x.size), dtype=np.float32, copy=False)
+        logger.info(f'Value convert,{train_x.shape}, <<<crash point>>>')
+        lgb_model.fit(np.array(train_x.values.reshape(train_x.size), dtype=np.float32, copy=False)
+                      , train_y.values, eval_set=eval_set, verbose=10,
                       early_stopping_rounds=30, eval_metric=f1_macro )
         logger.info('End Fit, <<<crash point>>>')
         #logger.info(f'End Train#{index}, best_iter:{lgb_model.best_iteration_}')
