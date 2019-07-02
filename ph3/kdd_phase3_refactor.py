@@ -1118,24 +1118,16 @@ def only_number(df):
     return df
 
 @timed()
-def reduce_mem_df(df):
-
-    feature_list = get_feature_name(df)
-
-    partition_num = 5
-    for i in tqdm(range(partition_num)):
-        with timed_bolck(f'Float32,Convert#{i}'):
-            gc.collect()
-            todo = [feature_list[index] for index in range(len(feature_list)) if index % partition_num == i  ]
-            df.loc[:, todo] = df.loc[:, todo].astype(np.float32)
-            gc.collect()
-    for name, types in df.dtypes.iteritems():
-        print(name,types)
-
+def convert_int32_float32(df):
+    for name, type_ in df.dtypes.iteritems():
+        if type_ in ('int32', 'int64') and name in get_feature_name(df):
+            logger.info(f'Try to convert {name} from {type_} to float32')
+            df.loc[:,name] = df.loc[:,name].astype(np.float32)
     return df
 
 @timed()
 @file_cache()
+@reduce_mem()
 def get_feature_all():
     """
     添加新的测试特征, 在此处merge
@@ -1156,7 +1148,8 @@ def get_feature_all():
     logger.info((stable.shape, felix.shape))
     all =  pd.concat([stable, felix] , axis=1)
 
-    all = reduce_mem_df(all)
+
+    #all = reduce_mem_df(all)
     #all.click_mode = all.click_mode.astype(np.int8)
     #all =  all.loc[:, remove_duplicates_col(all)]
     return all
@@ -1164,6 +1157,7 @@ def get_feature_all():
 @file_cache()
 def get_predict_feature():
     all_data = get_feature_all()
+    all_data = convert_int32_float32(all_data)
     feature_name = get_feature_name(all_data)
     logger.info(f'Final Train feature#{len(feature_name)}: {sorted(feature_name)}')
     tr_index = ~all_data['click_mode'].isnull()

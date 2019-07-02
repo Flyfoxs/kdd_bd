@@ -47,6 +47,7 @@ class OptimizedRounder(object):
 
     def predict(self, X):
         coef = self.coef_['x']
+        logger.info(f'Predict with:{coef}')
         #print(self.coef_)
         X_p = DF(np.copy(X))
         for i in range(len(coef)):
@@ -79,6 +80,9 @@ def gen_sub(oof_file):
 def train_base(feature_cnt=9999):
 
     all_data = get_feature_all()
+    all_data = convert_int32_float32(all_data)
+
+    logger.info(f'Current all_data dtypes:\n {all_data.dtypes.value_counts()}')
     #all_data = all_data.sample(frac=0.1)
 
     #all_data = reduce_dim(all_data)
@@ -119,6 +123,7 @@ def train_base(feature_cnt=9999):
             )
 
 
+            logger.info(f'Begin to split X_Train:{X_train[feature_name].shape}')
             train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[
                 test_index], y.iloc[train_index], y.iloc[test_index]
             eval_set = [(test_x[feature_name].values, test_y.values)]
@@ -127,7 +132,7 @@ def train_base(feature_cnt=9999):
             logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
             train_x = train_x[feature_name].values
             train_y = train_y.values
-            logger.info(train_x.dtypes)
+            logger.info(f'train_x:{train_x.dtype}')
 
             gc.collect()
             lgb_model.fit(train_x, train_y, eval_set=eval_set, verbose=10, early_stopping_rounds=30,
@@ -153,6 +158,9 @@ def train_base(feature_cnt=9999):
                 final_pred = np.array(y_test).reshape(-1, 1)
             else:
                 final_pred = np.hstack((final_pred, np.array(y_test).reshape(-1, 1)))
+
+            del train_x, test_x, train_y, test_y, eval_set
+            gc.collect()
 
     cv_pred = np.zeros((X_train.shape[0], 12))
     test_pred = np.zeros((X_test.shape[0], 12))
