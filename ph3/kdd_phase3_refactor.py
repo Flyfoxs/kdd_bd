@@ -1123,6 +1123,7 @@ def convert_int32_float32(df):
         if type_ in ('int32', 'int64') and name in get_feature_name(df):
             logger.info(f'Try to convert {name} from {type_} to float32')
             df.loc[:,name] = df.loc[:,name].astype(np.float32)
+            gc.collect()
     return df
 
 @timed()
@@ -1148,7 +1149,7 @@ def get_feature_all():
     logger.info((stable.shape, felix.shape))
     all =  pd.concat([stable, felix] , axis=1)
 
-
+    all = convert_int32_float32(all)
     #all = reduce_mem_df(all)
     #all.click_mode = all.click_mode.astype(np.int8)
     #all =  all.loc[:, remove_duplicates_col(all)]

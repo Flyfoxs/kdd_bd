@@ -10,7 +10,7 @@ def train():
     p = Process(target=gen_feature, name='get_feature')
     p.start()
     p.join()
-
+    gc.collect()
     oof_file=train_base()
     gc.collect()
     gen_sub(oof_file)
@@ -45,8 +45,8 @@ class OptimizedRounder(object):
         loss_partial = partial(self._kappa_loss, X=X, y=y)
         self.coef_ = sp.optimize.minimize(loss_partial, self.initial_coef, method='Powell')
 
-    def predict(self, X):
-        coef = self.coef_['x']
+    def predict(self, X, coef):
+
         logger.info(f'Predict with:{coef}')
         #print(self.coef_)
         X_p = DF(np.copy(X))
@@ -65,13 +65,14 @@ def gen_sub(oof_file):
     test = pd.read_hdf(oof_file, 'test')
     opt.fit(train.iloc[:, :12], train.iloc[:, 12].astype(int))
 
-    test_pred = opt.predict(test.iloc[:, :12])
-    test_pred = np.argmax(test_pred.values, axis=1)
-    test_pred = pd.DataFrame(test_pred, columns=['recommend_mode'], index=test.index)
-    test_pred.index.name = 'sid'
-    sub_file = f'./result/n_{opt.initial_score:6.5f}_{opt.best_score:6.5f}.csv'
-    test_pred.to_csv(sub_file)
-    logger.info(f'Sub file save to:{sub_file}')
+    for coef, name in [(opt.coef_['x'], 'best'),  (opt.initial_coef, 'default')]:
+        test_pred = opt.predict(test.iloc[:, :12], opt.initial_coef)
+        test_pred = np.argmax(test_pred.values, axis=1)
+        test_pred = pd.DataFrame(test_pred, columns=['recommend_mode'], index=test.index)
+        test_pred.index.name = 'sid'
+        sub_file = f'./result/{name}_{opt.initial_score:6.5f}_{opt.best_score:6.5f}.csv'
+        test_pred.to_csv(sub_file)
+        logger.info(f'Sub file save to:{sub_file}')
     logger.info(f'Best coef is: {opt.coefficients()}')
     return opt.coefficients()
 
