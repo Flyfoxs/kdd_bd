@@ -79,6 +79,7 @@ def gen_sub(oof_file):
 def train_base(feature_cnt=9999):
 
     all_data = get_feature_all()#.fillna(0)
+    #all_data = all_data.sample(frac=0.1)
 
     #all_data = reduce_dim(all_data)
 
@@ -97,6 +98,7 @@ def train_base(feature_cnt=9999):
     tr_index = ~all_data['click_mode'].isnull()
     X_train = all_data[tr_index][list(set(feature_name))].reset_index(drop=True)
     y = all_data[tr_index]['click_mode'].reset_index(drop=True)
+
     X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
     del all_data
     print(X_train.shape, X_test.shape)
@@ -128,7 +130,12 @@ def train_base(feature_cnt=9999):
 
             cv_model.append(lgb_model)
 
+            from sklearn.externals import joblib
+            # save model
+            joblib.dump(lgb_model, f'./model/model_normal_{len(feature_name)}_{index}.pkl')
+
             lgb_model.booster_.save_model(f'./model/model_normal_{len(feature_name)}_{index}.txt')
+
 
             y_test = lgb_model.predict(X_test[feature_name])
             y_val = lgb_model.predict_proba(test_x[feature_name])
@@ -262,8 +269,8 @@ def train_base(feature_cnt=9999):
 if __name__ == '__main__':
     """
     运行方式:
-    nohup python -u ph3/kdd_train.py train_base 50 &
-    nohup python -u ph3/kdd_train.py train > train_28.log 2>&1  &
+    nohup python -u kdd_train.py train_base 50 &
+    nohup python -u kdd_train.py train > train_28.log 2>&1  &
 
     快速测试代码逻辑错: 
     get_queries,里面的采样比例即可

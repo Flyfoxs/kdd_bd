@@ -2,34 +2,18 @@ import sys
 
 sys.path.append('./')
 
-import json
-import pandas as pd
 import numpy as np
 import os
 
-from sklearn.decomposition import TruncatedSVD
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import NMF
-from sklearn.decomposition import LatentDirichletAllocation as LDA
-from tqdm import tqdm
 from bayes_opt import BayesianOptimization
-import math
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import accuracy_score,recall_score,precision_score
 
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import f1_score
-from time import gmtime, strftime
-from collections import Counter
 import lightgbm as lgb
-import gc
 
 from bayes_opt.observer import JSONLogger
 from bayes_opt.event import Events
 from bayes_opt.util import load_logs
-
-import matplotlib.pyplot as plt #Visulization
-import seaborn as sns #Visulization
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -149,14 +133,14 @@ gbm_params = {
     'reg_lambda':(5, 5),
 }
 
-from ph3.kdd_phase3_refactor import get_feature_all
+from ph3.kdd_phase3_refactor import get_feature_all, get_feature_name
 
 
 all_data = get_feature_all()
 
-feature_name = get_feature_all(all_data)
+feature_name = get_feature_name(all_data)
 
-all_data = all_data.loc[:,feature_name+['sid']]
+all_data = all_data.loc[:,set(feature_name+['sid', 'click_mode'])]
 
 all_data = all_data.sample(n=2000,random_state=123,axis=0) #这里做采样，验证逻辑
 
@@ -178,7 +162,9 @@ print(best_target, best_params)
 
 
 
-
+""""
+nohup python -u ph3/bayes_optim.py > optim.log 2>&1  & 
+"""
 
 
 

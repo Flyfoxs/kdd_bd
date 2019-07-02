@@ -27,6 +27,17 @@ def f1_macro(labels, preds):
     return 'f1_score', score, True
 
 
+@timed()
+def convert_df(df):
+    partition_num = 3
+    for i in tqdm(range(partition_num)):
+        with timed_bolck(f'Convert#{i}'):
+            todo = [index for index in range(df.shape[1]) if index % partition_num == i]
+            df.iloc[:, todo] = df.iloc[:, todo].astype(np.float32)
+            gc.collect()
+
+    return df
+
 
 @timed()
 def train_base(feature_cnt=9999):
@@ -47,6 +58,9 @@ def train_base(feature_cnt=9999):
     cv_score = []
     cv_model = []
     del all_data
+
+    X_train = convert_df(X_train)
+
     skf = StratifiedKFold(n_splits=5, random_state=2019, shuffle=True)
     for index, (train_index, test_index) in enumerate(skf.split(X_train, y)):
         gc.collect()
@@ -67,15 +81,12 @@ def train_base(feature_cnt=9999):
         #         X_train.loc[:,col] = X_train.loc[:,col].astype(float)
 
 
+
         logger.info('Begin Split')
         train_x, test_x, train_y, test_y = X_train.iloc[train_index], X_train.iloc[test_index], y.iloc[train_index], y.iloc[test_index]
         eval_set = [(test_x, test_y)]
         logger.info('End Split')
         logger.info(f'Begin Manually convert')
-        for col in tqdm(train_x.columns):
-
-            train_x.loc[:, col] = train_x.loc[:, col].values.astype(np.float32)
-            gc.collect()
 
         # gc.collect()
         train_x = train_x.values
@@ -89,7 +100,6 @@ def train_base(feature_cnt=9999):
                       early_stopping_rounds=30, eval_metric=f1_macro )
         logger.info('End Fit, <<<crash point>>>')
         #logger.info(f'End Train#{index}, best_iter:{lgb_model.best_iteration_}')
-
 
 if __name__ == '__main__':
     import fire

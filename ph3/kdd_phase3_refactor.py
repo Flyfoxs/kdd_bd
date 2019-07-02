@@ -1118,6 +1118,18 @@ def only_number(df):
     return df
 
 @timed()
+def reduce_mem_df(df):
+    partition_num = 5
+    for i in tqdm(range(partition_num)):
+        with timed_bolck(f'Convert#{i}'):
+            gc.collect()
+            todo = [index for index in range(df.shape[1]) if (index % partition_num == i) and (df.iloc[:,i].name!='click_mode') ]
+            df.iloc[:, todo] = df.iloc[:, todo].astype(np.float32)
+            gc.collect()
+
+    return df
+
+@timed()
 @file_cache()
 def get_feature_all():
     """
@@ -1138,8 +1150,21 @@ def get_feature_all():
 
     logger.info((stable.shape, felix.shape))
     all =  pd.concat([stable, felix] , axis=1)
+
+    all = reduce_mem_df(all)
+    #all.click_mode = all.click_mode.astype(np.int8)
     #all =  all.loc[:, remove_duplicates_col(all)]
     return all
+
+@file_cache()
+def get_predict_feature():
+    all_data = get_feature_all()
+    feature_name = get_feature_name(all_data)
+    logger.info(f'Final Train feature#{len(feature_name)}: {sorted(feature_name)}')
+    tr_index = ~all_data['click_mode'].isnull()
+    X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
+
+    return X_test
 
 @timed()
 @file_cache()
