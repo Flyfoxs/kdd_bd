@@ -1119,13 +1119,18 @@ def only_number(df):
 
 @timed()
 def reduce_mem_df(df):
+
+    feature_list = get_feature_name(df)
+
     partition_num = 5
     for i in tqdm(range(partition_num)):
-        with timed_bolck(f'Convert#{i}'):
+        with timed_bolck(f'Float32,Convert#{i}'):
             gc.collect()
-            todo = [index for index in range(df.shape[1]) if (index % partition_num == i) and (df.iloc[:,i].name!='click_mode') ]
-            df.iloc[:, todo] = df.iloc[:, todo].astype(np.float32)
+            todo = [feature_list[index] for index in range(len(feature_list)) if index % partition_num == i  ]
+            df.loc[:, todo] = df.loc[:, todo].astype(np.float32)
             gc.collect()
+    for name, types in df.dtypes.iteritems():
+        print(name,types)
 
     return df
 

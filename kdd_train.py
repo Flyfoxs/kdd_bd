@@ -78,7 +78,7 @@ def gen_sub(oof_file):
 @timed()
 def train_base(feature_cnt=9999):
 
-    all_data = get_feature_all()#.fillna(0)
+    all_data = get_feature_all()
     #all_data = all_data.sample(frac=0.1)
 
     #all_data = reduce_dim(all_data)
@@ -121,11 +121,16 @@ def train_base(feature_cnt=9999):
 
             train_x, test_x, train_y, test_y = X_train[feature_name].iloc[train_index], X_train[feature_name].iloc[
                 test_index], y.iloc[train_index], y.iloc[test_index]
-            eval_set = [(test_x[feature_name], test_y)]
+            eval_set = [(test_x[feature_name].values, test_y.values)]
 
 
             logger.info(f'Begin Train#{index}, feature:{len(feature_name)}, Size:{train_x[feature_name].shape}')
-            lgb_model.fit(train_x[feature_name].values, train_y.values, eval_set=eval_set, verbose=10, early_stopping_rounds=30,
+            train_x = train_x[feature_name].values
+            train_y = train_y.values
+            logger.info(train_x.dtypes)
+
+            gc.collect()
+            lgb_model.fit(train_x, train_y, eval_set=eval_set, verbose=10, early_stopping_rounds=30,
                           eval_metric=f1_macro)
 
             cv_model.append(lgb_model)

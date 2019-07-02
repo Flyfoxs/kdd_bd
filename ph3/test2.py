@@ -28,13 +28,15 @@ def f1_macro(labels, preds):
 
 
 @timed()
-def convert_df(df):
-    partition_num = 3
+def convert_df(df:pd.DataFrame):
+    partition_num = 5
     for i in tqdm(range(partition_num)):
         with timed_bolck(f'Convert#{i}'):
             todo = [index for index in range(df.shape[1]) if index % partition_num == i]
             df.iloc[:, todo] = df.iloc[:, todo].astype(np.float32)
             gc.collect()
+    for name, types in df.dtypes.iteritems():
+        print(name,types)
 
     return df
 
