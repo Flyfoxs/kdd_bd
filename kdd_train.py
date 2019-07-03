@@ -66,7 +66,8 @@ def gen_sub(oof_file):
     opt.fit(train.iloc[:, :12], train.iloc[:, 12].astype(int))
 
     for coef, name in [(opt.coef_['x'], 'best'),  (opt.initial_coef, 'default')]:
-        test_pred = opt.predict(test.iloc[:, :12], opt.initial_coef)
+        logger.info(f'Adjust with coef:{coef}')
+        test_pred = opt.predict(test.iloc[:, :12], coef)
         test_pred = np.argmax(test_pred.values, axis=1)
         test_pred = pd.DataFrame(test_pred, columns=['recommend_mode'], index=test.index)
         test_pred.index.name = 'sid'

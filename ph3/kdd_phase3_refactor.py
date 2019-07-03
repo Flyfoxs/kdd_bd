@@ -1128,9 +1128,19 @@ def convert_int32_float32(df):
     return df
 
 @timed()
+def get_feature_all():
+    all_data = get_feature_prepare()
+    return all_data
+    # des = all_data.describe().T
+    # des = des.loc[~np.isinf(des['max'])]
+    # col_list = list(des.index.values)
+    # return all_data.loc[:,col_list]
+
+
+@timed()
 @file_cache()
 @reduce_mem()
-def get_feature_all():
+def get_feature_prepare():
     """
     添加新的测试特征, 在此处merge
     :return:
@@ -1141,7 +1151,7 @@ def get_feature_all():
     felix = get_feature()
     felix = only_number(felix)
     remove_list = ['sid','click_mode']
-    remove_list.extend([col for col in felix.columns if col.startswith('cv_')])
+    #remove_list.extend([col for col in felix.columns if col.startswith('cv_')])
     remove_list.extend([col for col in felix.columns if col.startswith('p') and len(col) <= 3])
     felix = remove_col(felix,remove_list)
     felix = felix.add_prefix('felix_')
