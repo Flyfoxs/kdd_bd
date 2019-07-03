@@ -76,9 +76,16 @@ def gen_sub(oof_file):
     logger.info(f'Best coef is: {opt.coefficients()}')
     return opt.coefficients()
 
+@timed()
+def reduce_by_svd(df, n_component):
+    svd = TruncatedSVD(n_components=n_component, random_state=2019)
+    df = df.fillna(0)
+    return svd.fit_transform(df.values)
+
+
 
 @timed()
-def train_base(feature_cnt=9999):
+def train_base():
 
     all_data = get_feature_all()
     all_data = convert_int32_float32(all_data)
@@ -96,15 +103,20 @@ def train_base(feature_cnt=9999):
 
 
     # Define F1 Train
-    feature_name = get_feature_name(all_data)[:feature_cnt]
+    feature_name = get_feature_name(all_data)
     logger.info(f'Final Train feature#{len(feature_name)}: {sorted(feature_name)}')
     # CV TRAIN
 
     tr_index = ~all_data['click_mode'].isnull()
-    X_train = all_data[tr_index][list(set(feature_name))].reset_index(drop=True)
     y = all_data[tr_index]['click_mode'].reset_index(drop=True)
 
-    X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
+    # # all_data = reduce_by_svd(all_data[list(set(feature_name))], 500)
+    #
+    # all_data = pd.DataFrame(all_data).add_prefix('svd_')
+    # feature_name = all_data.columns
+
+    X_train = all_data[tr_index]#[list(set(feature_name))].reset_index(drop=True)
+    X_test = all_data[~tr_index]#[list(set(feature_name))].reset_index(drop=True)
     del all_data
     print(X_train.shape, X_test.shape)
     final_pred = []
@@ -143,7 +155,9 @@ def train_base(feature_cnt=9999):
 
             from sklearn.externals import joblib
             # save model
-            joblib.dump(lgb_model, f'./model/model_normal_{len(feature_name)}_{index}.pkl')
+            score = lgb_model.best_score_["valid_0"]["f1_score"]
+            mode_file = f'./model/model_normal_{len(feature_name)}_{index}_{lgb_model.best_iteration_}_{score:6.5f}.pkl'
+            joblib.dump(lgb_model, mode_file )
 
             lgb_model.booster_.save_model(f'./model/model_normal_{len(feature_name)}_{index}.txt')
 
@@ -285,6 +299,8 @@ if __name__ == '__main__':
     运行方式:
     nohup python -u kdd_train.py train_base 50 &
     nohup python -u kdd_train.py train > train_28.log 2>&1  &
+    
+    python -u kdd_train.py train_base
 
     快速测试代码逻辑错: 
     get_queries,里面的采样比例即可

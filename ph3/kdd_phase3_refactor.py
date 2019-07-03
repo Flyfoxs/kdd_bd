@@ -787,7 +787,8 @@ def get_feature_space_time():
     space_time = feature[['sid']].merge(queries,on=['sid'],how='left').merge(plans[['sid','plan_time']],on='sid',how='left')
 
     with timed_bolck('Gen_time_feature'):
-        space_time['time_diff'] = ((space_time['req_time']-space_time['plan_time'])*1e-9).astype(int)
+        space_time['time_diff'] = (pd.to_datetime(space_time.plan_time) - pd.to_datetime(space_time.req_time)).dt.total_seconds()
+        #space_time['time_diff'] = ((pd.to_datetime(space_time['req_time'])-space_time['plan_time'])*1e-9).astype(int)
         space_time['req_time_dow'] = space_time['req_time'].dt.dayofweek
         space_time['req_time_woy'] = space_time['req_time'].dt.weekofyear
         space_time['req_is_weekend'] = (space_time['req_time'].dt.weekday>=5).astype(int)
@@ -1162,7 +1163,7 @@ def get_predict_feature():
     feature_name = get_feature_name(all_data)
     logger.info(f'Final Train feature#{len(feature_name)}: {sorted(feature_name)}')
     tr_index = ~all_data['click_mode'].isnull()
-    X_test = all_data[~tr_index][list(set(feature_name))].reset_index(drop=True)
+    X_test = all_data[~tr_index][feature_name]#.reset_index(drop=True)
 
     return X_test
 
