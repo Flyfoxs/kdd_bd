@@ -443,7 +443,9 @@ if for_test:
 else:
     nrows = 1000
 
-input_dir = './data/'
+
+from core.config import input_folder
+input_dir = input_folder
 
 t1 = time.time()
 print("Now Input Data.....")
