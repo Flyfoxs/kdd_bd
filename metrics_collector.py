@@ -139,5 +139,5 @@ if __name__ == "__main__":
     print(json.dumps(result))
 
 """
-    nohup python -u metrics_collector.py >> metrics_03.log 2>&1 &
+    nohup python -u metrics_collector.py >> metrics_05.log 2>&1 &
 """

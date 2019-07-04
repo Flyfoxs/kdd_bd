@@ -301,7 +301,7 @@ if __name__ == '__main__':
     nohup python -u kdd_train.py train_base 50 &
     nohup python -u kdd_train.py train > train_28.log 2>&1  &
     
-    python -u kdd_train.py train_base
+    nohup python -u kdd_train.py train_base > train.log 2>&1  &
 
     快速测试代码逻辑错: 
     get_queries,里面的采样比例即可

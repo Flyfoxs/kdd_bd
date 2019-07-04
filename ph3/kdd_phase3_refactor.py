@@ -662,6 +662,57 @@ def get_feature_plan_wide():
             feature = feature.merge(tmp,on='sid',how='left')
             if i in mixed_col:
                 break
+
+    r0 = ['Recommand_0_{}'.format(i) for i in ['eta','distance','price']]
+    r1 = ['Recommand_1_{}'.format(i) for i in ['eta','distance','price']]
+    r2 = ['Recommand_2_{}'.format(i) for i in ['eta','distance','price']]
+    dis = [
+        (feature[r0].fillna(0).values,feature[r1].fillna(0).values),
+        (feature[r0].fillna(0).values,feature[r2].fillna(0).values),
+        (feature[r1].fillna(0).values,feature[r2].fillna(0).values),
+    ]
+
+    tmp0,tmp1 = [],[]
+    for i in dis:
+        col0,col1 = [],[]
+        for j in tqdm(range(len(i[0]))):
+            col0.append(calc_distance(i[0][j],i[1][j],'cosine'))
+            col1.append(calc_distance(i[0][j],i[1][j],'euclidean'))
+        tmp0.append(col0)
+        tmp1.append(col1)
+
+    tmp0 = pd.DataFrame(np.array(tmp0).T)
+    tmp0.columns = ['Recommand_0_1_cos','Recommand_0_2_cos','Recommand_1_2_cos',]
+    to_calc = list(tmp0.columns)
+    tmp0['012_cos_mean'] = tmp0[to_calc].mean(axis=1)
+    tmp0['012_cos_sum'] = tmp0[to_calc].sum(axis=1)
+    tmp0['012_cos_std'] = tmp0[to_calc].std(axis=1)
+
+    tmp1 = pd.DataFrame(np.array(tmp1).T)
+    tmp1.columns = ['Recommand_0_1_l2','Recommand_0_2_l2','Recommand_1_2_l2']
+    to_calc = list(tmp1.columns)
+
+    tmp1['012_l2_mean'] = tmp1[to_calc].mean(axis=1)
+    tmp1['012_l2_sum'] = tmp1[to_calc].sum(axis=1)
+    tmp1['012_l2_std'] = tmp1[to_calc].std(axis=1)
+
+    feature = pd.concat([feature, tmp0, tmp1],axis=1)
+
+
+    feature['minPrice_equal_0_mode'] = (
+    feature['price_inMin_0_transport_mode'] == feature['Recommand_0_transport_mode']).astype(int)
+    feature['minEta_equal_0_mode'] = (
+    feature['eta_inMin_0_transport_mode'] == feature['Recommand_0_transport_mode']).astype(int)
+    feature['minDistance_equal_0_mode'] = (
+    feature['distance_inMin_0_transport_mode'] == feature['Recommand_0_transport_mode']).astype(int)
+
+    feature['min_0_Distance_equal_min_0_Price'] = (
+    feature['distance_inMin_0_transport_mode'] == feature['price_inMin_0_transport_mode']).astype(int)
+    feature['min_0_Eta_equal_min_0_Price'] = (
+    feature['eta_inMin_0_transport_mode'] == feature['price_inMin_0_transport_mode']).astype(int)
+    feature['min_0_Distance_equal_min_0_Eta'] = (
+    feature['distance_inMin_0_transport_mode'] == feature['eta_inMin_0_transport_mode']).astype(int)
+
     return feature
 
 #106.8 mins(bd)
@@ -765,8 +816,18 @@ def get_feature_from_plans():
         ]
 
         for i in tqdm(distance_pair):
-            plans_feature['{}_l2_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'euclidean'),plans[i[0]],plans[i[1]]))
-            plans_feature['{}_cos_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'cosine'),plans[i[0]],plans[i[1]]))
+            plans_feature['{}_l2_distance'.format('_'.join(i))] = list(
+                map(lambda x, y: calc_distance(x, y, 'euclidean'), plans[i[0]], plans[i[1]]))
+            plans_feature['{}_cos_distance'.format('_'.join(i))] = list(
+                map(lambda x, y: calc_distance(x, y, 'cosine'), plans[i[0]], plans[i[1]]))
+            #     plans_feature['{}_ham_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'hamming'),plans[i[0]],plans[i[1]]))
+            #     plans_feature['{}_edit_distance'.format('_'.join(i))] = list(map(lambda x,y:edit_distance(x,y),plans[i[0]],plans[i[1]]))
+            #     plans_feature['{}_jaccard_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'jaccard'),plans[i[0]],plans[i[1]]))
+            #     plans_feature['{}_corr_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'correlation'),plans[i[0]],plans[i[1]]))
+            plans_feature['{}_braycurtis_distance'.format('_'.join(i))] = list(
+                map(lambda x, y: calc_distance(x, y, 'braycurtis'), plans[i[0]], plans[i[1]]))
+            #     plans_feature['{}_match_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'matching'),plans[i[0]],plans[i[1]]))
+            #     plans_feature['{}_wminkowski_distance'.format('_'.join(i))] = list(map(lambda x,y:calc_distance(x,y,'wminkowski'),plans[i[0]],plans[i[1]]))
 
     #     'braycurtis', 'canberra', 'chebyshev', 'cityblock',
     #     'correlation', 'cosine', 'dice', 'euclidean', 'hamming',
@@ -958,40 +1019,7 @@ def get_feature_od_svd_vec():
 @reduce_mem()
 def get_feature_build() :
     feature = get_feature_plan_wide()
-    r0 = ['Recommand_0_{}'.format(i) for i in ['eta','distance','price']]
-    r1 = ['Recommand_1_{}'.format(i) for i in ['eta','distance','price']]
-    r2 = ['Recommand_2_{}'.format(i) for i in ['eta','distance','price']]
-    dis = [
-        (feature[r0].fillna(0).values,feature[r1].fillna(0).values),
-        (feature[r0].fillna(0).values,feature[r2].fillna(0).values),
-        (feature[r1].fillna(0).values,feature[r2].fillna(0).values),
-    ]
 
-    tmp0,tmp1 = [],[]
-    for i in dis:
-        col0,col1 = [],[]
-        for j in tqdm(range(len(i[0]))):
-            col0.append(calc_distance(i[0][j],i[1][j],'cosine'))
-            col1.append(calc_distance(i[0][j],i[1][j],'euclidean'))
-        tmp0.append(col0)
-        tmp1.append(col1)
-
-    tmp0 = pd.DataFrame(np.array(tmp0).T)
-    tmp0.columns = ['Recommand_0_1_cos','Recommand_0_2_cos','Recommand_1_2_cos',]
-    to_calc = list(tmp0.columns)
-    tmp0['012_cos_mean'] = tmp0[to_calc].mean(axis=1)
-    tmp0['012_cos_sum'] = tmp0[to_calc].sum(axis=1)
-    tmp0['012_cos_std'] = tmp0[to_calc].std(axis=1)
-
-    tmp1 = pd.DataFrame(np.array(tmp1).T)
-    tmp1.columns = ['Recommand_0_1_l2','Recommand_0_2_l2','Recommand_1_2_l2']
-    to_calc = list(tmp1.columns)
-
-    tmp1['012_l2_mean'] = tmp1[to_calc].mean(axis=1)
-    tmp1['012_l2_sum'] = tmp1[to_calc].sum(axis=1)
-    tmp1['012_l2_std'] = tmp1[to_calc].std(axis=1)
-
-    feature = pd.concat([feature, tmp0, tmp1],axis=1)
     print(feature.shape)
 
     # Sequence 2 Sequence Graph Embedding
@@ -1073,6 +1101,135 @@ def get_feature_txt():
     print(text_feature.shape)
     return text_feature
 
+@timed()
+def get_featre_cross_stat():
+
+    data = get_plans_data()
+
+    stat_0 = data[['transport_mode']].drop_duplicates()
+
+    for i in tqdm(['transport_mode'], desc= 'corss_model'):
+        tmp = data[[i, 'price', 'eta', 'distance']].groupby([i]).agg(
+            {'price': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count],
+             'eta': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count],
+             'distance': ['sum', 'mean', 'min', 'max', 'std', 'skew', get_mode, get_mode_count]})
+
+        tmp.columns = ['_'.join(col).strip() for col in tmp.columns.values]
+        tmp = tmp.add_prefix(i + '_').reset_index()
+        stat_0 = stat_0.merge(tmp, how='left', on=i)
+
+    stat_1 = data[['transport_mode', 'pid']].drop_duplicates()
+
+    for i in tqdm([['transport_mode', 'pid']], desc= 'corss_model_pid'):
+        tmp = data[['price', 'eta', 'distance'] + i].groupby(i).agg(
+            {'price': ['sum', 'mean', 'min', 'max', 'std', 'skew'],
+             'eta': ['sum', 'mean', 'min', 'max', 'std', 'skew'],
+             'distance': ['sum', 'mean', 'min', 'max', 'std', 'skew']})
+
+        tmp.columns = ['_'.join(col).strip() for col in tmp.columns.values]
+        tmp = tmp.add_prefix(str(i[0]) + "_" + str(i[1]) + '_').reset_index()
+        stat_1 = stat_1.merge(tmp, how='left', on=i)
+
+    stat_2 = data[['transport_mode', 'o']].drop_duplicates()
+
+    for i in tqdm([['transport_mode', 'o']], desc= 'corss_model_o'):
+        tmp = data[['price', 'eta', 'distance'] + i].groupby(i).agg(
+            {'price': ['sum', 'mean', 'min', 'max', 'std', 'skew'],
+             'eta': ['sum', 'mean', 'min', 'max', 'std', 'skew'],
+             'distance': ['sum', 'mean', 'min', 'max', 'std', 'skew']})
+
+        tmp.columns = ['_'.join(col).strip() for col in tmp.columns.values]
+        tmp = tmp.add_prefix(str(i[0]) + "_" + str(i[1]) + '_').reset_index()
+        stat_2 = stat_2.merge(tmp, how='left', on=i)
+
+    stat_3 = data[['transport_mode', 'pid', 'o']].drop_duplicates()
+
+    for i in tqdm([['transport_mode', 'pid', 'o']], desc= 'corss_model_pid_o'):
+        tmp = data[['price', 'eta', 'distance'] + i].groupby(i).agg(
+            {'price': ['sum', 'mean', 'min', 'max', 'std', 'skew'],
+             'eta': ['sum', 'mean', 'min', 'max', 'std', 'skew'],
+             'distance': ['sum', 'mean', 'min', 'max', 'std', 'skew']})
+
+        tmp.columns = ['_'.join(col).strip() for col in tmp.columns.values]
+        tmp = tmp.add_prefix(str(i[0]) + "_" + str(i[1]) + "_" + str(i[2])).reset_index()
+        stat_3 = stat_3.merge(tmp, how='left', on=i)
+
+    print(stat_0.shape, stat_1.shape, stat_2.shape, stat_3.shape)
+
+    feature = get_feature_plan_wide()
+    space_time = get_feature_space_time()
+    cross_stat = feature[['sid', 'Recommand_0_transport_mode', 'Recommand_0_distance',
+                          'Recommand_0_eta', 'Recommand_0_price']].merge(space_time[['sid', 'pid', 'o']], how='left',
+                                                                         on='sid')
+    del space_time,feature
+    with timed_bolck('for_Recommand'):
+        cross_stat = cross_stat.merge(stat_0.rename(columns={'transport_mode': 'Recommand_0_transport_mode'}), how='left',
+                                      on=['Recommand_0_transport_mode'])
+        for i in ['distance', 'price', 'eta']:
+            cross_stat['R0_{}_max_diffratio'.format(i)] = (cross_stat['transport_mode_{}_max'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / (cross_stat['transport_mode_{}_max'.format(i)])
+            cross_stat['R0_{}_mean_diffratio'.format(i)] = (cross_stat['transport_mode_{}_mean'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / (cross_stat['transport_mode_{}_mean'.format(i)])
+            cross_stat['R0_{}_min_diffratio'.format(i)] = (cross_stat['transport_mode_{}_min'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / (cross_stat['transport_mode_{}_min'.format(i)])
+            cross_stat['R0_{}_mode_ratio'.format(i)] = (cross_stat['transport_mode_{}_get_mode'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / cross_stat['transport_mode_{}_get_mode'.format(i)]
+            cross_stat['R0_{}_sum_ratio'.format(i)] = (cross_stat['transport_mode_{}_sum'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / cross_stat['transport_mode_{}_sum'.format(i)]
+
+        cross_stat = cross_stat.merge(stat_1.rename(columns={'transport_mode': 'Recommand_0_transport_mode'}), how='left',
+                                      on=['Recommand_0_transport_mode', 'pid'])
+        for i in ['distance', 'price', 'eta']:
+            cross_stat['R0_pid_{}_max_diffratio'.format(i)] = (cross_stat['transport_mode_pid_{}_max'.format(i)] -
+                                                               cross_stat['Recommand_0_{}'.format(i)]) / (
+                                                              cross_stat['transport_mode_pid_{}_max'.format(i)])
+            cross_stat['R0_pid_{}_mean_diffratio'.format(i)] = (cross_stat['transport_mode_pid_{}_mean'.format(i)] -
+                                                                cross_stat['Recommand_0_{}'.format(i)]) / (
+                                                               cross_stat['transport_mode_pid_{}_mean'.format(i)])
+            cross_stat['R0_pid_{}_min_diffratio'.format(i)] = (cross_stat['transport_mode_pid_{}_min'.format(i)] -
+                                                               cross_stat['Recommand_0_{}'.format(i)]) / (
+                                                              cross_stat['transport_mode_pid_{}_min'.format(i)])
+            cross_stat['R0_pid_{}_sum_ratio'.format(i)] = (cross_stat['transport_mode_pid_{}_sum'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / cross_stat['transport_mode_pid_{}_sum'.format(i)]
+
+        cross_stat = cross_stat.merge(stat_2.rename(columns={'transport_mode': 'Recommand_0_transport_mode'}), how='left',
+                                      on=['Recommand_0_transport_mode', 'o'])
+        for i in ['distance', 'price', 'eta']:
+            cross_stat['R0_o_{}_max_diffratio'.format(i)] = (cross_stat['transport_mode_o_{}_max'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / (cross_stat['transport_mode_pid_{}_max'.format(i)])
+            cross_stat['R0_o_{}_mean_diffratio'.format(i)] = (cross_stat['transport_mode_o_{}_mean'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / (cross_stat['transport_mode_pid_{}_mean'.format(i)])
+            cross_stat['R0_o_{}_min_diffratio'.format(i)] = (cross_stat['transport_mode_o_{}_min'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / (cross_stat['transport_mode_pid_{}_min'.format(i)])
+            cross_stat['R0_o_{}_sum_ratio'.format(i)] = (cross_stat['transport_mode_o_{}_sum'.format(i)] - cross_stat[
+                'Recommand_0_{}'.format(i)]) / cross_stat['transport_mode_pid_{}_sum'.format(i)]
+
+        cross_stat = cross_stat.merge(stat_3.rename(columns={'transport_mode': 'Recommand_0_transport_mode'}), how='left',
+                                      on=['Recommand_0_transport_mode', 'pid', 'o'])
+        for i in ['distance', 'price', 'eta']:
+            cross_stat['R0_pid_o_{}_max_diffratio'.format(i)] = (cross_stat['transport_mode_pid_o{}_max'.format(i)] -
+                                                                 cross_stat['Recommand_0_{}'.format(i)]) / (
+                                                                cross_stat['transport_mode_pid_{}_max'.format(i)])
+            cross_stat['R0_pid_o_{}_mean_diffratio'.format(i)] = (cross_stat['transport_mode_pid_o{}_mean'.format(i)] -
+                                                                  cross_stat['Recommand_0_{}'.format(i)]) / (
+                                                                 cross_stat['transport_mode_pid_{}_mean'.format(i)])
+            cross_stat['R0_pid_o_{}_min_diffratio'.format(i)] = (cross_stat['transport_mode_pid_o{}_min'.format(i)] -
+                                                                 cross_stat['Recommand_0_{}'.format(i)]) / (
+                                                                cross_stat['transport_mode_pid_{}_min'.format(i)])
+            cross_stat['R0_pid_o_{}_sum_ratio'.format(i)] = (
+                                                            cross_stat['transport_mode_pid_o{}_sum'.format(i)] - cross_stat[
+                                                                'Recommand_0_{}'.format(i)]) / cross_stat[
+                                                                'transport_mode_pid_{}_sum'.format(i)]
+
+        cross_stat = cross_stat[[i for i in cross_stat.columns if
+                                 i not in ['Recommand_0_transport_mode', 'Recommand_0_distance', 'Recommand_0_price',
+                                           'Recommand_0_eta', 'pid', 'o']]].sort_values(by=['sid']).reset_index(drop=True)
+
+
+    print(cross_stat.shape, cross_stat.columns)
+
+    return cross_stat
+
 
 @timed()
 @file_cache()
@@ -1089,7 +1246,7 @@ def get_feature_pid():
     tmp = data[['pid','transport_mode']].groupby(['pid'])['transport_mode'].agg(['median','std','nunique','count',get_mode,get_mode_count]).add_prefix('pid_transport_mode_').reset_index()
     pid_stats = pid_stats.merge(tmp,how='left',on='pid')
 
-    N_COM = 5
+    N_COM = 10
     x = profiles.drop(['pid'], axis=1).values
     svd = TruncatedSVD(n_components=N_COM, n_iter=20, random_state=2019)
     svd_x = svd.fit_transform(x)
@@ -1132,6 +1289,21 @@ def convert_int32_float32(df):
 @timed()
 def get_feature_all():
     all_data = get_feature_prepare()
+
+    #
+    # click_mode = all_data.loc[:, ['click_mode']]
+    # with timed_bolck('SVD Feature'):
+    #     name_list = get_feature_name(all_data)
+    #     all_data = all_data.loc[:, name_list]
+    #     all_data = all_data.replace([np.inf, -np.inf, np.nan], 0)
+    #
+    #     from sklearn.decomposition import TruncatedSVD
+    #     d_svd = TruncatedSVD(n_components=200, n_iter=3, random_state=2019)
+    #     tmp = d_svd.fit_transform(all_data)
+    #
+    #     tmp = pd.DataFrame(tmp, index=all_data.index).add_prefix('svd_')
+    #     all_data = pd.concat([tmp, click_mode], axis=1)
+
     return all_data
     # des = all_data.describe().T
     # des = des.loc[~np.isinf(des['max'])]
@@ -1191,7 +1363,7 @@ def get_feature_stable():
     #Embedding model 耗时比较久
     # to_build      = get_feature_build()
 
-    #od_svd_vec = get_feature_od_svd_vec()
+    #
 
     #initial feauture group
 
@@ -1201,6 +1373,16 @@ def get_feature_stable():
         feature = get_feature_plan_wide()
         all_data = pd.concat([pid_stats, not_sid_col(feature)],  axis = 1)
         del pid_stats, feature
+        gc.collect()
+
+        od_svd_vec = get_feature_od_svd_vec()
+        all_data = pd.concat([all_data, not_sid_col(od_svd_vec)],  axis = 1)
+        del od_svd_vec
+        gc.collect()
+
+        cross_stat = get_featre_cross_stat()
+        all_data = pd.concat([all_data, not_sid_col(cross_stat)],  axis = 1)
+        del cross_stat
         gc.collect()
 
         space_time = get_feature_space_time()
