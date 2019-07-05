@@ -13,7 +13,7 @@ def train():
     gc.collect()
     oof_file=train_base()
     gc.collect()
-    gen_sub(oof_file)
+    #gen_sub(oof_file)
 
 
 class OptimizedRounder(object):
